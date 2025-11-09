@@ -7,6 +7,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* CloneX DNA Theme System */
+@import './theme/dna.css';
+
 :root {
   /* CloneX Research Facility Color Palette - Flat Only */
   --bg: #FAFAF0;
