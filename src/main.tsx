@@ -1,6 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { addCriticalResourceHints, usePerformanceMonitoring } from './utils/performanceOptimizer';
+import './index.css'; // 🎨 CRITICAL: Import Tailwind CSS and theme system
 
 // Initialize performance optimizations
 addCriticalResourceHints();
