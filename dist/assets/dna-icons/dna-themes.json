@@ -1,0 +1,59 @@
+{
+  "human": {
+    "accent": "#5DA3FF",
+    "accentContrast": "#FFFFFF",
+    "background": "linear-gradient(135deg, #EAF4FF 0%, #C7E0FF 100%)",
+    "shadow": "0 0 60px rgba(93,163,255,0.3)"
+  },
+  "robot": {
+    "accent": "#B673FF",
+    "accentContrast": "#FFFFFF",
+    "background": "linear-gradient(135deg, #E9E1FF 0%, #D2B8FF 100%)",
+    "shadow": "0 0 60px rgba(182,115,255,0.3)"
+  },
+  "demon": {
+    "accent": "#FF4D4D",
+    "accentContrast": "#FFFFFF",
+    "background": "linear-gradient(135deg, #FFD9D9 0%, #FF4D4D 100%)",
+    "shadow": "0 0 60px rgba(255,77,77,0.3)"
+  },
+  "angel": {
+    "accent": "#F9B8E1",
+    "accentContrast": "#000000",
+    "background": "linear-gradient(135deg, #FFF0F9 0%, #F9B8E1 100%)",
+    "shadow": "0 0 60px rgba(249,184,225,0.3)"
+  },
+  "reptile": {
+    "accent": "#9ADF4D",
+    "accentContrast": "#000000",
+    "background": "linear-gradient(135deg, #E8F7D2 0%, #B2E673 100%)",
+    "shadow": "0 0 60px rgba(154,223,77,0.3)"
+  },
+  "undead": {
+    "accent": "#4A7AAF",
+    "accentContrast": "#FFFFFF",
+    "background": "linear-gradient(135deg, #DDEAF8 0%, #4A7AAF 100%)",
+    "shadow": "0 0 60px rgba(74,122,175,0.3)"
+  },
+  "alien": {
+    "accent": "#00FFA3",
+    "accentContrast": "#000000",
+    "background": "linear-gradient(135deg, #D6FFEF 0%, #00FFA3 100%)",
+    "shadow": "0 0 60px rgba(0,255,163,0.3)"
+  },
+  "murakami": {
+    "accent": "#FF6BDA",
+    "accentContrast": "#000000",
+    "background": "linear-gradient(135deg, #FFE6FA 0%, #FF6BDA 100%)",
+    "shadow": "0 0 60px rgba(255,107,218,0.3)"
+  },
+  "murakamiDrip": {
+    "overlay": {
+      "finishGradient": "linear-gradient(135deg, #FF6BDA, #00FFA3, #5DA3FF, #F9B8E1)",
+      "finishSpeed": "4s",
+      "animation": "dripFoil 4s ease-in-out infinite",
+      "blendMode": "overlay",
+      "description": "Applies a holographic shimmer overlay for Murakami Drip clones."
+    }
+  }
+}

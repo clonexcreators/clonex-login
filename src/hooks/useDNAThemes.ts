@@ -22,7 +22,7 @@ interface DNAThemeState {
 interface UseDNAThemesReturn extends DNAThemeState {
   setActiveDNA: (dnaType: DNAType) => void
   refreshOwnedDNA: (nfts: any[]) => void
-  resetTheme: () void
+  resetTheme: () => void
 }
 
 /**

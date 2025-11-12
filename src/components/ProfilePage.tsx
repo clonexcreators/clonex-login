@@ -1,4 +1,4 @@
-// CloneX Universal Login - Full Profile Page (v3.6.1 - Phase 2 DNA Revision)
+// CloneX Universal Login - Full Profile Page (v3.6.3 - Phase 2.3 Social OAuth)
 import React, { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { useCloneXAuth } from '../hooks/useCloneXAuth'
@@ -6,10 +6,12 @@ import { useDNAThemes } from '../hooks/useDNAThemes'
 import { DNA_THEMES } from '../theme/dna'
 import DNASelector from './profile/DNASelector'
 import { DnaBadge } from './profile/DnaBadge'
-
-// Import profile components from the Universal Login Package
-// Note: These should be imported from @clonex/universal-login once the package is published
-// For now, we'll create local versions or use the package directly
+import AvatarPicker from './profile/AvatarPicker'
+import AvatarUploader from './profile/AvatarUploader'
+import { SocialConnections } from './profile/SocialConnections'
+import { ProfileResetModal } from './profile/ProfileResetModal'
+import { avatarService, NFTAvatar } from '../services/avatarService'
+import { profileService } from '../services/profileService'
 
 interface ProfilePageProps {
   onNavigateBack?: () => void
@@ -93,8 +95,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
     showWallet: false
   })
 
+  // Avatar modals state
   const [activeTab, setActiveTab] = useState<'profile' | 'privacy' | 'avatar' | 'social' | 'dna'>('profile')
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+  const [showAvatarUploader, setShowAvatarUploader] = useState(false)
+  
+  // Phase 2.4 - Profile Reset & Public Pages
+  const [showResetModal, setShowResetModal] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   // Fetch profile on mount
   useEffect(() => {
@@ -231,6 +239,56 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Avatar selection handlers
+  const handleNFTAvatarSelect = async (nft: NFTAvatar) => {
+    try {
+      setSaving(true)
+      setError(null)
+      setSuccessMessage(null)
+
+      console.log('Setting NFT avatar:', nft)
+      
+      const response = await avatarService.setNFTAvatar(nft)
+      
+      if (response.success && response.profile) {
+        setProfile(prev => prev ? { ...prev, avatar: response.profile.avatar } : null)
+        setSuccessMessage('Avatar updated successfully!')
+        setTimeout(() => setSuccessMessage(null), 3000)
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update avatar')
+      console.error('Avatar update error:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCustomAvatarUpload = async (avatarUrl: string) => {
+    try {
+      // Refresh profile to get updated avatar
+      await fetchProfile()
+      setSuccessMessage('Custom avatar uploaded successfully!')
+      setTimeout(() => setSuccessMessage(null), 3000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to update profile after upload')
+      console.error('Profile refresh error:', err)
+    }
+  }
+
+  // Get current avatar ID for picker
+  const getCurrentAvatarId = (): string | undefined => {
+    if (profile?.avatar.type === 'nft' && profile.avatar.nftDetails) {
+      return `${profile.avatar.nftDetails.contract}-${profile.avatar.nftDetails.tokenId}`
+    }
+    return undefined
+  }
+
+  // Handler for social connection changes
+  const handleSocialConnectionChange = () => {
+    // Refresh profile to get updated social connections
+    fetchProfile()
   }
 
   if (!isAuthenticated) {
@@ -562,15 +620,23 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                     className="w-32 h-32 rounded-full object-cover border-4 border-gray-100 mx-auto mb-4"
                   />
                   <p className="text-sm text-gray-600 mb-4">
-                    Current avatar type: <span className="font-semibold">{profile.avatar.type}</span>
+                    Current avatar type: <span className="font-semibold capitalize">{profile.avatar.type}</span>
                   </p>
+                  {profile.avatar.type === 'nft' && profile.avatar.nftDetails && (
+                    <p className="text-xs text-gray-500">
+                      {profile.avatar.nftDetails.collection} #{profile.avatar.nftDetails.tokenId}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-4">
                   <button
                     onClick={() => setShowAvatarPicker(true)}
-                    className="w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors font-medium"
+                    className="w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
                   >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
                     Choose from your NFTs
                   </button>
 
@@ -584,8 +650,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                   </div>
 
                   <button
-                    className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors font-medium"
+                    onClick={() => setShowAvatarUploader(true)}
+                    className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
                   >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
                     Upload Custom Avatar
                   </button>
                 </div>
@@ -596,75 +666,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
               </div>
             )}
 
-            {/* Social Tab */}
+            {/* Social Tab - PHASE 2.3 INTEGRATION */}
             {activeTab === 'social' && (
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  {/* Discord */}
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-gray-900">Discord</h3>
-                          {profile.social.discord?.verified ? (
-                            <p className="text-sm text-green-600">✓ Verified as {profile.social.discord.username}</p>
-                          ) : (
-                            <p className="text-sm text-gray-600">Not connected</p>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          profile.social.discord?.verified
-                            ? 'bg-red-50 hover:bg-red-100 text-red-600'
-                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                        }`}
-                      >
-                        {profile.social.discord?.verified ? 'Disconnect' : 'Connect'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* X/Twitter */}
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
-                          <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-gray-900">X (Twitter)</h3>
-                          {profile.social.x?.verified ? (
-                            <p className="text-sm text-green-600">✓ Verified as @{profile.social.x.username}</p>
-                          ) : (
-                            <p className="text-sm text-gray-600">Not connected</p>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          profile.social.x?.verified
-                            ? 'bg-red-50 hover:bg-red-100 text-red-600'
-                            : 'bg-black hover:bg-gray-800 text-white'
-                        }`}
-                      >
-                        {profile.social.x?.verified ? 'Disconnect' : 'Connect'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-xs text-gray-500 text-center">
-                  Connect your social accounts to verify ownership and enhance your profile
-                </p>
-              </div>
+              <SocialConnections
+                connections={profile.social}
+                onConnectionChange={handleSocialConnectionChange}
+              />
             )}
           </div>
         </div>
@@ -693,6 +700,22 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
           </div>
         </div>
       </div>
+
+      {/* Avatar Picker Modal */}
+      <AvatarPicker
+        isOpen={showAvatarPicker}
+        onClose={() => setShowAvatarPicker(false)}
+        onSelect={handleNFTAvatarSelect}
+        walletAddress={address || ''}
+        currentAvatarId={getCurrentAvatarId()}
+      />
+
+      {/* Avatar Uploader Modal */}
+      <AvatarUploader
+        isOpen={showAvatarUploader}
+        onClose={() => setShowAvatarUploader(false)}
+        onUploadSuccess={handleCustomAvatarUpload}
+      />
     </div>
   )
 }
