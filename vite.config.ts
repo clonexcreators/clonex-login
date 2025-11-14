@@ -46,11 +46,9 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
     cssMinify: true,
-    // Ensure CSS is included in the build
-    cssCodeSplit: false, // Change to false to have a single CSS file
+    cssCodeSplit: false,
     rollupOptions: {
       output: {
-        // Ensure CSS is treated properly
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
             return 'assets/css/style-[hash].css';
@@ -63,33 +61,28 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash][extname]';
         },
-        manualChunks: {
-          // React core packages
-          'vendor-react': ['react', 'react-dom'],
+        manualChunks: (id) => {
+          // CRITICAL FIX: Only split out Web3 libraries
+          // Keep React and ALL React-dependent code in main bundle
           
-          // TanStack Query
-          'vendor-query': ['@tanstack/react-query'],
+          // Web3 libraries only - this is the ONLY thing we split out
+          if (
+            id.includes('node_modules/wagmi') ||
+            id.includes('node_modules/viem') ||
+            id.includes('node_modules/@rainbow-me/rainbowkit') ||
+            id.includes('node_modules/@wagmi/') ||
+            id.includes('node_modules/@reown/') ||
+            id.includes('node_modules/@walletconnect/')
+          ) {
+            return 'vendor-web3';
+          }
           
-          // Web3 libraries - keep them together to avoid circular dependencies
-          'vendor-web3': ['wagmi', 'viem', '@rainbow-me/rainbowkit'],
-          
-          // UI libraries
-          'vendor-ui': ['clsx', 'zustand', 'lucide-react'],
-          
-          // App chunks
-          'app-auth': [
-            './src/hooks/useCloneXAuth.ts',
-            './src/hooks/useWalletConnection.ts',
-            './src/services/authService.ts',
-            './src/stores/authStore.ts'
-          ]
+          // Everything else (React, UI libs, utilities) stays with app code
+          // This ensures React is ALWAYS available before anything tries to use it
         },
         chunkFileNames: (chunkInfo) => {
-          if (chunkInfo.name?.startsWith('vendor-')) {
+          if (chunkInfo.name === 'vendor-web3') {
             return 'assets/vendor/[name]-[hash].js';
-          }
-          if (chunkInfo.name?.startsWith('app-')) {
-            return 'assets/app/[name]-[hash].js';
           }
           return 'assets/chunks/[name]-[hash].js';
         },
@@ -119,6 +112,8 @@ export default defineConfig({
     include: [
       'react',
       'react-dom',
+      '@tanstack/react-query',
+      'react-router-dom',
       '@rainbow-me/rainbowkit',
       'wagmi',
       'viem',
