@@ -1,10 +1,13 @@
-// CloneX Authentication Hook - Fixed State Machine
-// Properly separates wallet connection from session authentication
+// CloneX Authentication Hook - Uses Global Zustand Store
+// All components share the same auth state via useAuthStore
+// After login success, setUser() and setAuthenticated() update the global store,
+// which triggers re-renders in ALL components subscribed to useAuthStore
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
+import { useAuthStore } from '../stores/authStore';
 import { authService } from '../services/authService';
-import { AuthUser, AccessLevel, NFTVerificationResponse } from '../config/api';
+import { AuthUser, NFTVerificationResponse } from '../config/api';
 
 interface AuthState {
   user: AuthUser | null;
@@ -24,31 +27,35 @@ interface AuthActions {
 }
 
 export const useCloneXAuth = (): AuthState & AuthActions => {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    isLoading: false,
-    error: null,
-    isAuthenticated: false,
-    nftData: null
-  });
+  // *** CRITICAL: Use global Zustand store for shared state ***
+  // This ensures ALL components (NavigationBar, AppContent, Modal) see the same state
+  const {
+    user,
+    isAuthenticated,
+    authToken,
+    isLoading,
+    error,
+    setUser,
+    setAuthenticated,
+    setLoading,
+    setError,
+    setConnected,
+    logout: storeLogout,
+    isTokenValid
+  } = useAuthStore();
 
   const { address, isConnected, isConnecting } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { disconnect } = useDisconnect();
 
-  // Track if we've already checked session on mount
-  const hasCheckedSession = useRef(false);
+  // Track NFT data locally (not critical for UI state)
+  const nftDataRef = useRef<NFTVerificationResponse | null>(null);
   const lastCheckedAddress = useRef<string | null>(null);
-
-  // Helper to update state
-  const updateState = useCallback((updates: Partial<AuthState>) => {
-    setState(prev => ({ ...prev, ...updates }));
-  }, []);
 
   // Clear error helper
   const clearError = useCallback(() => {
-    updateState({ error: null });
-  }, [updateState]);
+    setError(null);
+  }, [setError]);
 
   // Check if user is authenticated (validates existing token)
   const checkSessionStatus = useCallback(async (): Promise<boolean> => {
@@ -56,11 +63,8 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
 
     // No token = not authenticated
     if (!token) {
-      updateState({
-        user: null,
-        isAuthenticated: false,
-        nftData: null
-      });
+      setUser(null);
+      setAuthenticated(false);
       return false;
     }
 
@@ -68,69 +72,65 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     if (authService.isTokenExpired(token)) {
       console.log('🔐 Token expired, clearing session');
       authService.clearToken();
-      updateState({
-        user: null,
-        isAuthenticated: false,
-        nftData: null
-      });
+      setUser(null);
+      setAuthenticated(false);
       return false;
     }
 
     try {
       console.log('🔍 Validating existing session...');
+      setLoading(true);
       const sessionResponse = await authService.validateSession();
 
       if (sessionResponse.success && sessionResponse.sessionValid) {
         console.log('✅ Session valid, user authenticated');
-        updateState({
-          user: sessionResponse.user,
-          isAuthenticated: true
-        });
+        setUser(sessionResponse.user);
+        setAuthenticated(true, token);
+        setLoading(false);
         return true;
       } else {
         console.log('❌ Session invalid');
         authService.clearToken();
-        updateState({
-          user: null,
-          isAuthenticated: false,
-          nftData: null
-        });
+        setUser(null);
+        setAuthenticated(false);
+        setLoading(false);
         return false;
       }
-    } catch (error) {
-      console.warn('⚠️ Session validation failed:', error);
+    } catch (err) {
+      console.warn('⚠️ Session validation failed:', err);
       authService.clearToken();
-      updateState({
-        user: null,
-        isAuthenticated: false,
-        error: null, // Don't show error for session check failures
-        nftData: null
-      });
+      setUser(null);
+      setAuthenticated(false);
+      setLoading(false);
       return false;
     }
-  }, [updateState]);
+  }, [setUser, setAuthenticated, setLoading]);
 
   // Refresh NFT data
   const refreshNFTs = useCallback(async () => {
-    if (!address || !state.isAuthenticated) {
+    if (!address || !isAuthenticated) {
       console.warn('Cannot refresh NFTs: no address or not authenticated');
       return;
     }
 
-    updateState({ isLoading: true, error: null });
+    setLoading(true);
+    setError(null);
 
     try {
       const nftResponse = await authService.verifyNFTs(address);
 
       if (nftResponse.success) {
-        updateState({
-          nftData: nftResponse,
-          user: state.user ? {
-            ...state.user,
+        nftDataRef.current = nftResponse;
+
+        // Update user with access level from NFT verification
+        if (user) {
+          setUser({
+            ...user,
             accessLevel: nftResponse.accessLevel
-          } : null,
-          isLoading: false
-        });
+          } as AuthUser);
+        }
+
+        setLoading(false);
 
         console.log('✅ NFT verification completed:', {
           accessLevel: nftResponse.accessLevel,
@@ -138,24 +138,23 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
           delegated: nftResponse.delegatedAccess.enabled
         });
       }
-    } catch (error) {
-      const errorMessage = (error as Error).message;
+    } catch (err) {
+      const errorMessage = (err as Error).message;
       console.error('❌ NFT verification failed:', errorMessage);
-      updateState({
-        error: `NFT verification failed: ${errorMessage}`,
-        isLoading: false
-      });
+      setError(`NFT verification failed: ${errorMessage}`);
+      setLoading(false);
     }
-  }, [address, state.isAuthenticated, state.user, updateState]);
+  }, [address, isAuthenticated, user, setUser, setLoading, setError]);
 
   // Main login function - handles full nonce -> sign -> verify flow
   const login = useCallback(async () => {
     if (!address || !isConnected) {
-      updateState({ error: 'Wallet not connected' });
+      setError('Wallet not connected');
       return;
     }
 
-    updateState({ isLoading: true, error: null });
+    setLoading(true);
+    setError(null);
 
     try {
       console.log('🔐 Starting authentication for:', address);
@@ -181,31 +180,35 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
       if (authResponse.success) {
         console.log('🎉 Authentication successful!');
 
-        // Store token
+        // Store token in localStorage
         authService.setToken(authResponse.token);
 
-        // Update state IMMEDIATELY after successful auth
-        setState(prev => ({
-          ...prev,
-          user: authResponse.user,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null
-        }));
+        // *** CRITICAL: Update global Zustand store ***
+        // After login success, these lines cause the main view to rerender because:
+        // 1. setUser() updates the global 'user' state in Zustand
+        // 2. setAuthenticated() updates 'isAuthenticated' and 'authToken' in Zustand
+        // 3. setConnected() updates 'isConnected' and 'walletAddress' in Zustand
+        // 4. All components using useAuthStore() or useCloneXAuth() will re-render
+        //    because Zustand triggers subscriptions when state changes
+        setUser(authResponse.user);
+        setAuthenticated(true, authResponse.token);
+        setConnected(true, address);
+        setLoading(false);
+
+        console.log('🔄 Global auth state updated - UI should re-render now');
 
         // Step 4: Verify NFTs for access level (non-blocking)
         try {
           const nftResponse = await authService.verifyNFTs(address);
 
           if (nftResponse.success) {
-            setState(prev => ({
-              ...prev,
-              nftData: nftResponse,
-              user: prev.user ? {
-                ...prev.user,
-                accessLevel: nftResponse.accessLevel
-              } : authResponse.user
-            }));
+            nftDataRef.current = nftResponse;
+
+            // Update user with access level
+            setUser({
+              ...authResponse.user,
+              accessLevel: nftResponse.accessLevel
+            });
 
             console.log('🔬 NFT verification completed:', {
               accessLevel: nftResponse.accessLevel,
@@ -220,121 +223,95 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
       } else {
         throw new Error('Authentication failed');
       }
-    } catch (error) {
-      const errorMessage = (error as Error).message;
+    } catch (err) {
+      const errorMessage = (err as Error).message;
       console.error('❌ Authentication failed:', errorMessage);
 
       // Handle user rejection gracefully
       if (errorMessage.includes('rejected') || errorMessage.includes('denied') || errorMessage.includes('User rejected')) {
-        updateState({
-          error: 'Signature rejected - authentication cancelled',
-          isLoading: false
-        });
+        setError('Signature rejected - authentication cancelled');
       } else {
-        updateState({
-          error: `Authentication failed: ${errorMessage}`,
-          isLoading: false
-        });
+        setError(`Authentication failed: ${errorMessage}`);
       }
+      setLoading(false);
     }
-  }, [address, isConnected, signMessageAsync, updateState]);
+  }, [address, isConnected, signMessageAsync, setUser, setAuthenticated, setConnected, setLoading, setError]);
 
   // Logout function - clears session AND disconnects wallet
   const logout = useCallback(() => {
     console.log('🚪 Logging out (full logout)...');
 
-    // Clear token first
+    // Clear token from localStorage
     authService.clearToken();
 
-    // Reset state
-    setState({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      error: null,
-      nftData: null
-    });
+    // Reset global Zustand store - this triggers re-render in all subscribed components
+    storeLogout();
 
     // Disconnect wallet
     disconnect();
 
-    // Reset session check refs
-    hasCheckedSession.current = false;
+    // Reset local refs
+    nftDataRef.current = null;
     lastCheckedAddress.current = null;
 
     console.log('✅ Logout complete');
-  }, [disconnect]);
+  }, [storeLogout, disconnect]);
 
   // Disconnect wallet only - does NOT clear session
-  // User can reconnect same wallet and maintain session
   const disconnectWallet = useCallback(() => {
     console.log('🔌 Disconnecting wallet only (keeping session if valid)...');
-
-    // Just disconnect wallet, don't clear token
     disconnect();
-
-    // Note: We keep the token so if user reconnects same wallet,
-    // they can resume their session
-
     console.log('✅ Wallet disconnected');
   }, [disconnect]);
 
+  // Sync wallet connection state to store
+  useEffect(() => {
+    setConnected(isConnected, address || undefined);
+  }, [isConnected, address, setConnected]);
+
   // Check session on mount and when address changes
   useEffect(() => {
-    // Skip if connecting or no address
     if (isConnecting) return;
 
-    // If not connected, check if we have a valid token anyway
-    // (user might have refreshed page)
     if (!isConnected) {
+      // Wallet disconnected - check if we still have valid token
       const token = authService.getToken();
-      if (token && !authService.isTokenExpired(token)) {
-        // We have a valid token but wallet disconnected
-        // Keep the authenticated state but mark as needing wallet reconnect
-        console.log('🔐 Valid token exists, but wallet not connected');
-      } else {
-        // No valid token and no wallet = clear everything
-        setState(prev => {
-          if (prev.isAuthenticated || prev.user) {
-            return {
-              ...prev,
-              user: null,
-              isAuthenticated: false,
-              nftData: null
-            };
-          }
-          return prev;
-        });
+      if (!token || authService.isTokenExpired(token)) {
+        // No valid token = clear auth state in global store
+        if (isAuthenticated) {
+          setUser(null);
+          setAuthenticated(false);
+        }
       }
       return;
     }
 
-    // Wallet connected - check session
+    // Wallet connected - check session if address changed
     if (address && address !== lastCheckedAddress.current) {
       console.log('🔍 Checking session for address:', address);
       lastCheckedAddress.current = address;
       checkSessionStatus();
     }
-  }, [address, isConnected, isConnecting, checkSessionStatus]);
+  }, [address, isConnected, isConnecting, isAuthenticated, checkSessionStatus, setUser, setAuthenticated]);
 
   // Auto-clear errors after 10 seconds
   useEffect(() => {
-    if (state.error) {
+    if (error) {
       const timer = setTimeout(() => {
         clearError();
       }, 10000);
 
       return () => clearTimeout(timer);
     }
-  }, [state.error, clearError]);
+  }, [error, clearError]);
 
   return {
-    // State
-    user: state.user,
-    isLoading: state.isLoading || isConnecting,
-    error: state.error,
-    isAuthenticated: state.isAuthenticated && !!state.user,
-    nftData: state.nftData,
+    // State - from global Zustand store (shared across all components)
+    user: user as AuthUser | null,
+    isLoading: isLoading || isConnecting,
+    error,
+    isAuthenticated: isAuthenticated && !!user,
+    nftData: nftDataRef.current,
 
     // Actions
     login,
