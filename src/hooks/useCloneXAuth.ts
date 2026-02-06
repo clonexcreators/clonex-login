@@ -65,28 +65,33 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
   // Per Backend Bible v3.5.2, uses GET /api/auth/session with httpOnly cookie
   const checkSessionStatus = useCallback(async (): Promise<boolean> => {
     try {
-      console.log('🍪 Validating session via cookie...');
+      console.log('🍪 [checkSessionStatus] Starting cookie validation...');
       setLoading(true);
 
       // Cookie is sent automatically with credentials: 'include'
       const sessionResponse = await authService.validateSession();
+      console.log('🍪 [checkSessionStatus] API response:', JSON.stringify(sessionResponse, null, 2));
 
       if (sessionResponse.authenticated && sessionResponse.user) {
-        console.log('✅ Cookie session valid, user authenticated');
+        console.log('✅ [checkSessionStatus] Session valid! Setting user:', sessionResponse.user.walletAddress);
         setUser(sessionResponse.user);
+        console.log('✅ [checkSessionStatus] setUser called');
         setAuthenticated(true);
+        console.log('✅ [checkSessionStatus] setAuthenticated(true) called');
         setConnected(true, sessionResponse.user.walletAddress);
+        console.log('✅ [checkSessionStatus] setConnected called');
         setLoading(false);
+        console.log('✅ [checkSessionStatus] setLoading(false) called - DONE');
         return true;
       } else {
-        console.log('❌ No valid cookie session');
+        console.log('❌ [checkSessionStatus] No valid session. authenticated:', sessionResponse.authenticated, 'user:', !!sessionResponse.user);
         setUser(null);
         setAuthenticated(false);
         setLoading(false);
         return false;
       }
     } catch (err) {
-      console.warn('⚠️ Cookie session validation failed:', err);
+      console.error('⚠️ [checkSessionStatus] Exception:', err);
       setUser(null);
       setAuthenticated(false);
       setLoading(false);
