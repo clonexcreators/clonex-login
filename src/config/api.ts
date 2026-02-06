@@ -85,11 +85,30 @@ export const ACCESS_LEVEL_CONFIG = {
 // Core Interfaces
 // ============================================================================
 
-// Core user interface
+// Core user interface - Per Backend Bible v3.5.2
 export interface AuthUser {
   walletAddress: string;
-  accessLevel: AccessLevel;
-  isAuthenticated: boolean;
+  accessLevel?: AccessLevel;
+  isAuthenticated?: boolean;
+  displayName?: string;
+  hasAccess?: boolean;
+  eligibleNFTs?: number;
+  accessReason?: string;
+  nftCount?: number;
+  collections?: {
+    clonex: number;
+    animus: number;
+    animus_eggs: number;
+    clonex_vials: number;
+  };
+  hasDelegation?: boolean;
+  sessionId?: string;
+  universalSession?: boolean;
+  gmPoints?: {
+    total: number;
+    canClaim: boolean;
+    lastClaimed: string;
+  };
 }
 
 // Authentication responses
@@ -102,15 +121,34 @@ export interface NonceResponse {
 
 export interface AuthResponse {
   success: boolean;
-  token: string;
+  token?: string;  // Optional when cookieMode: true
   user: AuthUser;
-  expiresIn: string;
+  expiresIn?: string;
+  tokenType?: string;  // "Cookie" when cookie-based
+  cookieMode?: boolean;  // true for cookie-based auth
+  sessionCreated?: boolean;
+  universalSession?: boolean;
+  apiVersion?: string;
 }
 
+// Per Backend Bible v3.5.2, GET /api/auth/session response
 export interface SessionStatusResponse {
   success: boolean;
-  user: AuthUser;
-  sessionValid: boolean;
+  authenticated: boolean;  // Primary auth check field
+  session?: {
+    sessionId: string;
+    userId: string;
+    isActive: boolean;
+    createdAt: string;
+    expiresAt: string;
+    lastActivity: string;
+  };
+  user: AuthUser | null;
+  sessionValid?: boolean;  // Legacy field for backward compat
+  cookieMode?: boolean;
+  apiVersion?: string;
+  message?: string;  // e.g., "No session cookie present"
+  reason?: string;   // e.g., "Session expired"
 }
 
 // ============================================================================
