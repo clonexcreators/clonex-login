@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AuthState, User, AuthChallenge, AuthError } from '../types';
+import { AuthChallenge, AuthError } from '../types';
+import { AuthUser } from '../config/api';
 import { authService } from '../services/authService';
 import { cookieService } from '../services/cookieService';
 import { ENV_CONFIG } from '../config/environment';
@@ -15,9 +16,22 @@ interface JWTClaims {
   nonce?: string;
 }
 
-interface AuthStore extends AuthState {
+interface AuthStoreState {
+  user: AuthUser | null;
+  isConnected: boolean;
+  isAuthenticated: boolean;
+  walletAddress: string | null;
+  authToken: string | null;
+  challenge: AuthChallenge | null;
+  isLoading: boolean;
+  isSigningChallenge: boolean;
+  error: string | null;
+  lastAuthTime: number | null;
+}
+
+interface AuthStore extends AuthStoreState {
   // User Management
-  setUser: (user: User | null) => void;
+  setUser: (user: AuthUser | null) => void;
   
   // Connection Management
   setConnected: (connected: boolean, address?: string) => void;
