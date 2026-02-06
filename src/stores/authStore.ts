@@ -99,53 +99,51 @@ export const useAuthStore = create<AuthStore>()(
       
       setSigningChallenge: (isSigningChallenge) => set({ isSigningChallenge }),
       
+      // setAuthenticated - Cookie-Based SSO (Backend Bible v3.5.2)
+      // Token parameter is now optional - backend handles httpOnly cookies
       setAuthenticated: (isAuthenticated, authToken) => {
-        if (isAuthenticated && authToken) {
-          // Store in localStorage
-          localStorage.setItem(AUTH_TOKEN_KEY, authToken);
-          
-          // Set cross-domain cookies for *.clonex.wtf
-          if (ENV_CONFIG.isCloneXDomain) {
-            const claims = authService.decodeToken(authToken);
-            const expiryTime = claims?.exp ? claims.exp * 1000 : Date.now() + SESSION_TIMEOUT;
-            
-            cookieService.setAuthSession(authToken, expiryTime);
-            
-            if (ENV_CONFIG.showCrossDomainDebug) {
-              console.log('🌐 Set cross-domain session for *.clonex.wtf');
+        if (isAuthenticated) {
+          // Cookie-based auth: backend sets httpOnly cookie automatically
+          // We only need to track local state for UI rendering
+          if (ENV_CONFIG.showApiDebug) {
+            console.log('🍪 Setting authenticated state (cookie-based SSO)');
+            console.log('🔐 authToken provided:', !!authToken);
+          }
+
+          // For backward compatibility, also store token in localStorage if provided
+          // This will be deprecated once all frontends migrate to cookie-based auth
+          if (authToken) {
+            localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+
+            // Legacy: Set custom cookies (will be removed when migration complete)
+            if (ENV_CONFIG.isCloneXDomain) {
+              const claims = authService.decodeToken(authToken);
+              const expiryTime = claims?.exp ? claims.exp * 1000 : Date.now() + SESSION_TIMEOUT;
+              cookieService.setAuthSession(authToken, expiryTime);
             }
           }
-          
-          // Decode token to get expiry
-          const claims = authService.decodeToken(authToken);
-          const expiryTime = claims?.exp ? claims.exp * 1000 : Date.now() + SESSION_TIMEOUT;
-          
-          if (ENV_CONFIG.showApiDebug) {
-            console.log('🔐 Token stored, expires at:', new Date(expiryTime).toLocaleString());
-            console.log('🎯 Access level:', claims?.accessLevel);
-            console.log('📦 Collections:', claims?.collections);
-            console.log('🏠 Subdomain access:', claims?.subdomainAccess);
-          }
-          
-          set({ 
-            isAuthenticated, 
-            authToken, 
+
+          set({
+            isAuthenticated: true,
+            authToken: authToken || null,
             lastAuthTime: Date.now(),
             error: null,
-            challenge: null 
+            challenge: null
           });
         } else {
+          // Logging out - clear local state
+          // Note: httpOnly cookie is cleared by backend via POST /api/auth/logout
           localStorage.removeItem(AUTH_TOKEN_KEY);
-          
-          // Clear cross-domain cookies
+
+          // Clear legacy custom cookies
           if (ENV_CONFIG.isCloneXDomain) {
             cookieService.clearAuthSession();
           }
-          
-          set({ 
-            isAuthenticated: false, 
+
+          set({
+            isAuthenticated: false,
             authToken: null,
-            lastAuthTime: null 
+            lastAuthTime: null
           });
         }
       },

@@ -1,7 +1,11 @@
-// CloneX Authentication Hook - Uses Global Zustand Store
-// All components share the same auth state via useAuthStore
-// After login success, setUser() and setAuthenticated() update the global store,
-// which triggers re-renders in ALL components subscribed to useAuthStore
+// CloneX Authentication Hook - Cookie-Based SSO (Backend Bible v3.5.2)
+//
+// Uses global Zustand store for shared auth state across all components.
+// Per Backend Bible v3.5.2, authentication uses httpOnly cookies:
+// - No localStorage token storage needed (backend handles cookies)
+// - Session validation via GET /api/auth/session (cookie sent automatically)
+// - Login via POST /api/auth/wallet/verify (sets cookie)
+// - Logout via POST /api/auth/logout (clears cookie)
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
@@ -57,54 +61,38 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     setError(null);
   }, [setError]);
 
-  // Check if user is authenticated (validates existing token)
+  // Check if user is authenticated (cookie-based session validation)
+  // Per Backend Bible v3.5.2, uses GET /api/auth/session with httpOnly cookie
   const checkSessionStatus = useCallback(async (): Promise<boolean> => {
-    const token = authService.getToken();
-
-    // No token = not authenticated
-    if (!token) {
-      setUser(null);
-      setAuthenticated(false);
-      return false;
-    }
-
-    // Token expired = not authenticated
-    if (authService.isTokenExpired(token)) {
-      console.log('🔐 Token expired, clearing session');
-      authService.clearToken();
-      setUser(null);
-      setAuthenticated(false);
-      return false;
-    }
-
     try {
-      console.log('🔍 Validating existing session...');
+      console.log('🍪 Validating session via cookie...');
       setLoading(true);
+
+      // Cookie is sent automatically with credentials: 'include'
       const sessionResponse = await authService.validateSession();
 
-      if (sessionResponse.success && sessionResponse.sessionValid) {
-        console.log('✅ Session valid, user authenticated');
+      if (sessionResponse.authenticated && sessionResponse.user) {
+        console.log('✅ Cookie session valid, user authenticated');
         setUser(sessionResponse.user);
-        setAuthenticated(true, token);
+        setAuthenticated(true);
+        setConnected(true, sessionResponse.user.walletAddress);
         setLoading(false);
         return true;
       } else {
-        console.log('❌ Session invalid');
-        authService.clearToken();
+        console.log('❌ No valid cookie session');
         setUser(null);
         setAuthenticated(false);
         setLoading(false);
         return false;
       }
     } catch (err) {
-      console.warn('⚠️ Session validation failed:', err);
-      authService.clearToken();
+      console.warn('⚠️ Cookie session validation failed:', err);
       setUser(null);
       setAuthenticated(false);
       setLoading(false);
       return false;
     }
-  }, [setUser, setAuthenticated, setLoading]);
+  }, [setUser, setAuthenticated, setConnected, setLoading]);
 
   // Refresh NFT data
   const refreshNFTs = useCallback(async () => {
@@ -146,7 +134,8 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     }
   }, [address, isAuthenticated, user, setUser, setLoading, setError]);
 
-  // Main login function - handles full nonce -> sign -> verify flow
+  // Main login function - Cookie-based authentication (Backend Bible v3.5.2)
+  // Flow: nonce -> sign -> verify (backend sets httpOnly cookie)
   const login = useCallback(async () => {
     if (!address || !isConnected) {
       setError('Wallet not connected');
@@ -157,7 +146,7 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     setError(null);
 
     try {
-      console.log('🔐 Starting authentication for:', address);
+      console.log('🔐 Starting cookie-based authentication for:', address);
 
       // Step 1: Generate nonce
       const nonceResponse = await authService.generateNonce(address);
@@ -170,7 +159,8 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
       });
       console.log('✅ Message signed successfully');
 
-      // Step 3: Verify signature and get JWT
+      // Step 3: Verify signature - backend sets httpOnly cookie automatically
+      // No token in response body when cookieMode: true
       const authResponse = await authService.verifySignature(
         address,
         signature,
@@ -178,20 +168,14 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
       );
 
       if (authResponse.success) {
-        console.log('🎉 Authentication successful!');
-
-        // Store token in localStorage
-        authService.setToken(authResponse.token);
+        console.log('🍪 Authentication successful! Cookie set by backend.');
+        console.log('   cookieMode:', authResponse.cookieMode);
+        console.log('   tokenType:', authResponse.tokenType);
 
         // *** CRITICAL: Update global Zustand store ***
-        // After login success, these lines cause the main view to rerender because:
-        // 1. setUser() updates the global 'user' state in Zustand
-        // 2. setAuthenticated() updates 'isAuthenticated' and 'authToken' in Zustand
-        // 3. setConnected() updates 'isConnected' and 'walletAddress' in Zustand
-        // 4. All components using useAuthStore() or useCloneXAuth() will re-render
-        //    because Zustand triggers subscriptions when state changes
+        // No need to store token in localStorage - cookie handles it!
         setUser(authResponse.user);
-        setAuthenticated(true, authResponse.token);
+        setAuthenticated(true);
         setConnected(true, address);
         setLoading(false);
 
@@ -237,12 +221,17 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     }
   }, [address, isConnected, signMessageAsync, setUser, setAuthenticated, setConnected, setLoading, setError]);
 
-  // Logout function - clears session AND disconnects wallet
-  const logout = useCallback(() => {
-    console.log('🚪 Logging out (full logout)...');
+  // Logout function - clears cookie session AND disconnects wallet
+  const logout = useCallback(async () => {
+    console.log('🚪 Logging out (cookie-based)...');
 
-    // Clear token from localStorage
-    authService.clearToken();
+    try {
+      // Call logout endpoint - this clears the httpOnly cookie
+      await authService.logout();
+      console.log('🍪 Cookie cleared by backend');
+    } catch (err) {
+      console.warn('⚠️ Logout API call failed (continuing with local cleanup):', err);
+    }
 
     // Reset global Zustand store - this triggers re-render in all subscribed components
     storeLogout();
@@ -269,30 +258,26 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     setConnected(isConnected, address || undefined);
   }, [isConnected, address, setConnected]);
 
-  // Check session on mount and when address changes
+  // Check cookie session on mount and when address changes
+  // Per Backend Bible v3.5.2, session is validated via cookie (not localStorage)
   useEffect(() => {
     if (isConnecting) return;
 
-    if (!isConnected) {
-      // Wallet disconnected - check if we still have valid token
-      const token = authService.getToken();
-      if (!token || authService.isTokenExpired(token)) {
-        // No valid token = clear auth state in global store
-        if (isAuthenticated) {
-          setUser(null);
-          setAuthenticated(false);
-        }
-      }
-      return;
-    }
-
-    // Wallet connected - check session if address changed
+    // Always check cookie session on mount (cookie persists across page loads)
+    // This enables cross-subdomain SSO - user authenticated on gm.clonex.wtf
+    // will also be authenticated on gro.clonex.wtf, etc.
     if (address && address !== lastCheckedAddress.current) {
-      console.log('🔍 Checking session for address:', address);
+      console.log('🍪 Checking cookie session for address:', address);
       lastCheckedAddress.current = address;
       checkSessionStatus();
+    } else if (!isConnected && !lastCheckedAddress.current) {
+      // No wallet connected but page just loaded - still check for cookie session
+      // This handles the case where user has a valid cookie from another subdomain
+      console.log('🍪 Checking for existing cookie session (no wallet connected)...');
+      checkSessionStatus();
+      lastCheckedAddress.current = 'checked-no-wallet';
     }
-  }, [address, isConnected, isConnecting, isAuthenticated, checkSessionStatus, setUser, setAuthenticated]);
+  }, [address, isConnected, isConnecting, checkSessionStatus]);
 
   // Auto-clear errors after 10 seconds
   useEffect(() => {
