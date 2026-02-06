@@ -1,14 +1,16 @@
 // CloneX Universal Login - Production App (Full UI) with Error Boundaries
-// Complete application structure with navigation, routing, and all features
+// Fixed: Proper auth state machine with compact modal for sign-in/profile
+
 import React, { lazy, Suspense, useState, Component, ErrorInfo, ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { WagmiProvider, useAccount } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RainbowKitProvider, darkTheme, ConnectButton } from '@rainbow-me/rainbowkit';
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import '@rainbow-me/rainbowkit/styles.css';
 import { useCloneXAuth } from '../hooks/useCloneXAuth';
 import { ENV_CONFIG } from '../config/environment';
 import { wagmiConfig } from '../config/wagmiConfig';
+import { CompactAuthModal } from './CompactAuthModal';
 
 // Error Boundary Component
 interface ErrorBoundaryProps {
@@ -41,7 +43,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-100 via-purple-50 to-cyan-100 p-4">
           <div className="max-w-2xl w-full bg-white/90 backdrop-blur-md rounded-2xl border-2 border-red-300 shadow-lg p-8">
             <h2 className="text-2xl font-black uppercase mb-4 text-red-600">
-              ⚠️ Application Error
+              Application Error
             </h2>
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
               <p className="font-mono text-sm text-red-800 break-words">
@@ -64,7 +66,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 // Lazy load major components
-const ProfilePageEnhanced = lazy(() => 
+const ProfilePageEnhanced = lazy(() =>
   import('./ProfilePageEnhanced').then(module => ({
     default: module.ProfilePage || module.ProfilePageEnhanced || module.default
   }))
@@ -88,18 +90,81 @@ const LoadingScreen = () => (
   </div>
 );
 
-// Simple navigation bar
+// Simple navigation bar with modal integration
 interface NavigationBarProps {
   onNavigate: (view: 'home' | 'profile' | 'collections') => void;
   currentView: 'home' | 'profile' | 'collections';
+  onOpenAuthModal: () => void;
 }
 
-const NavigationBar: React.FC<NavigationBarProps> = ({ onNavigate, currentView }) => {
-  const { isAuthenticated, logout, user, login } = useCloneXAuth();
+const NavigationBar: React.FC<NavigationBarProps> = ({ onNavigate, currentView, onOpenAuthModal }) => {
+  const { isAuthenticated, user, isLoading } = useCloneXAuth();
   const { isConnected } = useAccount();
 
+  // Determine button state
+  const getButtonContent = () => {
+    if (isLoading) {
+      return (
+        <button
+          disabled
+          className="px-6 py-2 bg-gray-400 text-white rounded-lg font-bold uppercase text-sm cursor-not-allowed flex items-center gap-2"
+        >
+          <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          Loading...
+        </button>
+      );
+    }
+
+    if (isAuthenticated && user) {
+      // Authenticated - show profile button
+      return (
+        <button
+          onClick={onOpenAuthModal}
+          className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-bold uppercase text-sm hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg"
+        >
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+          <span className="hidden md:inline">
+            {user.walletAddress?.slice(0, 6)}...{user.walletAddress?.slice(-4)}
+          </span>
+          <span className="md:hidden">Profile</span>
+        </button>
+      );
+    }
+
+    if (isConnected) {
+      // Connected but not authenticated - show Sign In
+      return (
+        <button
+          onClick={onOpenAuthModal}
+          className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-bold uppercase text-sm hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          Sign In
+        </button>
+      );
+    }
+
+    // Not connected - show Connect button
+    return (
+      <button
+        onClick={onOpenAuthModal}
+        className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-bold uppercase text-sm hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg flex items-center gap-2"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+        Connect
+      </button>
+    );
+  };
+
   return (
-    <nav className="bg-white/80 backdrop-blur-md border-b-2 border-pink-300 sticky top-0 z-50">
+    <nav className="bg-white/80 backdrop-blur-md border-b-2 border-pink-300 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -145,35 +210,9 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ onNavigate, currentView }
             </div>
           )}
 
-          {/* Wallet/User Section */}
-          <div className="flex items-center space-x-4">
-            {isAuthenticated && user ? (
-              <>
-                <div className="hidden md:block text-right">
-                  <p className="text-xs font-bold text-gray-600 uppercase">Connected</p>
-                  <p className="text-sm font-mono text-gray-900">
-                    {user.walletAddress?.slice(0, 6)}...{user.walletAddress?.slice(-4)}
-                  </p>
-                </div>
-                <button
-                  onClick={logout}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg font-bold uppercase text-sm hover:bg-red-600 transition-all"
-                >
-                  Disconnect
-                </button>
-              </>
-            ) : isConnected ? (
-              // Wallet connected but not authenticated - show Sign In button
-              <button
-                onClick={login}
-                className="px-6 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-bold uppercase text-sm hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg"
-              >
-                Sign In
-              </button>
-            ) : (
-              // Not connected at all - show RainbowKit Connect Button
-              <ConnectButton />
-            )}
+          {/* Auth Button */}
+          <div className="flex items-center">
+            {getButtonContent()}
           </div>
         </div>
 
@@ -215,12 +254,23 @@ const NavigationBar: React.FC<NavigationBarProps> = ({ onNavigate, currentView }
 const AppContent: React.FC = () => {
   const { isAuthenticated } = useCloneXAuth();
   const [currentView, setCurrentView] = useState<'home' | 'profile' | 'collections'>('home');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-50 to-cyan-100">
-      {/* ALWAYS render navbar - it handles connect/disconnect logic internally */}
-      <NavigationBar onNavigate={setCurrentView} currentView={currentView} />
-      
+      {/* Navigation Bar */}
+      <NavigationBar
+        onNavigate={setCurrentView}
+        currentView={currentView}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+      />
+
+      {/* Auth Modal */}
+      <CompactAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
       {!isAuthenticated ? (
         // Unauthenticated welcome screen
         <div className="flex items-center justify-center p-4 mt-8">
@@ -231,9 +281,15 @@ const AppContent: React.FC = () => {
             <p className="text-gray-700 font-bold mb-6">
               Connect your wallet and sign in to access your CloneX DNA profile
             </p>
-            <div className="bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg p-4 font-bold">
-              Use the Connect button in the navbar above to get started
-            </div>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-bold uppercase hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Get Started
+            </button>
           </div>
         </div>
       ) : (
@@ -253,11 +309,11 @@ const AppContent: React.FC = () => {
                 <ProductionNFTDashboard />
               </div>
             )}
-            
+
             {currentView === 'profile' && (
               <ProfilePageEnhanced onNavigateBack={() => setCurrentView('home')} />
             )}
-            
+
             {currentView === 'collections' && (
               <div className="max-w-7xl mx-auto px-4">
                 <ProductionNFTDashboard />
