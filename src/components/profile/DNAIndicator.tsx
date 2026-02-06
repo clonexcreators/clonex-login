@@ -92,7 +92,8 @@ export const DNAIndicator: React.FC<DNAIndicatorProps> = ({
         className={`w-full ${sizeClasses.bar[size]} ${className}`}
         style={{
           backgroundColor: theme.accent,
-          borderRadius: '2px'
+          borderRadius: '2px',
+          transformOrigin: 'left'
         }}
         initial={animated ? { scaleX: 0, opacity: 0 } : undefined}
         animate={animated ? { scaleX: 1, opacity: 1 } : undefined}
@@ -102,7 +103,6 @@ export const DNAIndicator: React.FC<DNAIndicatorProps> = ({
           stiffness: 200,
           damping: 20
         } : undefined}
-        style={{ transformOrigin: 'left' }}
         role="presentation"
         aria-label={`${theme.name} DNA indicator`}
       />
@@ -115,7 +115,8 @@ export const DNAIndicator: React.FC<DNAIndicatorProps> = ({
         className={`absolute top-0 right-0 ${sizeClasses.corner[size]} ${className}`}
         style={{
           clipPath: 'polygon(0 0, 100% 0, 100% 100%)',
-          backgroundColor: theme.accent
+          backgroundColor: theme.accent,
+          transformOrigin: 'top right'
         }}
         initial={animated ? { scale: 0, opacity: 0 } : undefined}
         animate={animated ? { scale: 1, opacity: 0.8 } : undefined}
@@ -124,7 +125,6 @@ export const DNAIndicator: React.FC<DNAIndicatorProps> = ({
           type: 'spring',
           stiffness: 300
         } : undefined}
-        style={{ transformOrigin: 'top right' }}
         role="presentation"
         aria-label={`${theme.name} DNA indicator`}
       />
