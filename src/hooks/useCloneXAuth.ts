@@ -263,26 +263,42 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
     setConnected(isConnected, address || undefined);
   }, [isConnected, address, setConnected]);
 
-  // Check cookie session on mount and when address changes
+  // Check cookie session on mount and when wallet state changes
   // Per Backend Bible v3.5.2, session is validated via cookie (not localStorage)
   useEffect(() => {
-    if (isConnecting) return;
+    console.log('🔄 [useEffect] Wallet state:', { isConnecting, isConnected, address, lastChecked: lastCheckedAddress.current });
 
-    // Always check cookie session on mount (cookie persists across page loads)
-    // This enables cross-subdomain SSO - user authenticated on gm.clonex.wtf
-    // will also be authenticated on gro.clonex.wtf, etc.
+    // Wait for wallet to finish connecting before checking session
+    if (isConnecting) {
+      console.log('⏳ [useEffect] Wallet still connecting, waiting...');
+      return;
+    }
+
+    // Check session if we have a new address
     if (address && address !== lastCheckedAddress.current) {
-      console.log('🍪 Checking cookie session for address:', address);
+      console.log('🍪 [useEffect] New address detected, checking session for:', address);
       lastCheckedAddress.current = address;
       checkSessionStatus();
-    } else if (!isConnected && !lastCheckedAddress.current) {
-      // No wallet connected but page just loaded - still check for cookie session
-      // This handles the case where user has a valid cookie from another subdomain
-      console.log('🍪 Checking for existing cookie session (no wallet connected)...');
-      checkSessionStatus();
-      lastCheckedAddress.current = 'checked-no-wallet';
+      return;
     }
-  }, [address, isConnected, isConnecting, checkSessionStatus]);
+
+    // Check session on initial page load (no wallet connected yet)
+    // This enables cross-subdomain SSO
+    if (!isConnected && lastCheckedAddress.current === null) {
+      console.log('🍪 [useEffect] Initial load with no wallet, checking cookie session...');
+      lastCheckedAddress.current = 'checked-no-wallet';
+      checkSessionStatus();
+      return;
+    }
+
+    // If wallet finished connecting but no address (user rejected or failed)
+    // Clear loading state to allow user interaction
+    if (!isConnecting && !address && lastCheckedAddress.current === null) {
+      console.log('⚠️ [useEffect] Wallet connection finished with no address, clearing loading');
+      lastCheckedAddress.current = 'no-wallet';
+      setLoading(false);
+    }
+  }, [address, isConnected, isConnecting, checkSessionStatus, setLoading]);
 
   // Auto-clear errors after 10 seconds
   useEffect(() => {
@@ -298,7 +314,9 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
   return {
     // State - from global Zustand store (shared across all components)
     user: user as AuthUser | null,
-    isLoading: isLoading || isConnecting,
+    // Only use store's isLoading - don't include isConnecting to avoid indefinite loading
+    // The button text/state should handle connecting state separately
+    isLoading,
     error,
     isAuthenticated: isAuthenticated && !!user,
     nftData: nftDataRef.current,
