@@ -5,6 +5,8 @@
  * Phase: 2.2 - Avatar Picker & Uploader
  */
 
+import { getNFTImageUrl, getNFTDisplayName, isNFTDelegated, getNFTCollection } from '../utils/nftUtils';
+
 const API_BASE_URL = 'https://api.clonex.wtf';
 
 export interface NFTAvatar {
@@ -56,18 +58,10 @@ export interface SetAvatarResponse {
 }
 
 class AvatarService {
-  private getAuthToken(): string | null {
-    return localStorage.getItem('clonex_auth_token');
-  }
-
+  // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
+  // Session cookie is sent automatically with credentials: 'include'
   private getAuthHeaders(): HeadersInit {
-    const token = this.getAuthToken();
-    if (!token) {
-      throw new Error('Authentication token not found');
-    }
-
     return {
-      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     };
   }
@@ -78,19 +72,13 @@ class AvatarService {
    */
   async getAvatarOptions(walletAddress: string): Promise<AvatarOption[]> {
     try {
-      const token = this.getAuthToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
       // Use the enhanced multi-delegation NFT endpoint
       const response = await fetch(
         `${API_BASE_URL}/api/nft/verify-multi/${walletAddress}`,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+          method: 'GET',
+          headers: this.getAuthHeaders(),
+          credentials: 'include'  // CRITICAL: Send session cookie
         }
       );
 
@@ -123,20 +111,31 @@ class AvatarService {
       }
 
       // Filter to only CloneX and Animus (eligible collections)
-      const eligibleNFTs = allNFTs.filter(
-        nft => nft.collection === 'clonex' || nft.collection === 'animus'
-      );
+      const eligibleNFTs = allNFTs.filter(nft => {
+        const collection = getNFTCollection(nft);
+        return collection === 'clonex' || collection === 'animus';
+      });
 
-      // Convert to avatar options
+      // Convert to avatar options using robust image extraction
       const avatarOptions: AvatarOption[] = eligibleNFTs
-        .filter(nft => nft.image) // Only NFTs with images
-        .map(nft => ({
-          id: `${nft.contract}-${nft.tokenId}`,
-          url: nft.imageFull || nft.image || '',
-          thumbnailUrl: nft.image || '',
-          type: 'nft' as const,
-          nft
-        }));
+        .map(nft => {
+          const imageUrl = getNFTImageUrl(nft);
+          if (!imageUrl) return null; // Skip NFTs without images
+
+          return {
+            id: `${nft.contract}-${nft.tokenId}`,
+            url: nft.imageFull || imageUrl,
+            thumbnailUrl: imageUrl,
+            type: 'nft' as const,
+            nft: {
+              ...nft,
+              image: imageUrl, // Ensure image field is populated
+              displayName: getNFTDisplayName(nft),
+              ownershipType: isNFTDelegated(nft) ? 'delegated' : 'direct'
+            }
+          };
+        })
+        .filter((option): option is AvatarOption => option !== null);
 
       console.log(`✅ Fetched ${avatarOptions.length} NFT avatar options`);
       return avatarOptions;
@@ -157,23 +156,17 @@ class AvatarService {
       // Validate file
       this.validateAvatarFile(file);
 
-      const token = this.getAuthToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
       // Create FormData for file upload
       const formData = new FormData();
       formData.append('avatar', file);
 
+      // Cookie-based auth - no Authorization header needed
       const response = await fetch(
         `${API_BASE_URL}/api/user/profile/avatar-upload`,
         {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-            // Don't set Content-Type - browser will set it with boundary for multipart
-          },
+          // Don't set Content-Type - browser will set it with boundary for multipart
+          credentials: 'include',  // CRITICAL: Send session cookie
           body: formData
         }
       );
@@ -218,6 +211,7 @@ class AvatarService {
         {
           method: 'POST',
           headers: this.getAuthHeaders(),
+          credentials: 'include',  // CRITICAL: Send session cookie
           body: JSON.stringify(avatarData)
         }
       );

@@ -1,40 +1,95 @@
 /* CloneX DNA Theme System - Official Integration Styles */
-/* Version: 3.6.1 - Aligned with official CloneX DNA specifications */
+/* Version: 3.7.0 - Full background + accent theming */
+
+/* ========================================
+   Default/Fallback Theme Variables
+   ======================================== */
+
+:root {
+  --dna-background: linear-gradient(135deg, #FAFAF0 0%, #FAFAF0 100%);
+  --dna-shadow: none;
+  --accent-contrast: #FFFFFF;
+}
 
 /* ========================================
    Official DNA Theme Color Variables
+   Each theme sets: accent, accent-contrast, background, shadow
    ======================================== */
 
 :root[data-dna-theme="human"] {
-  --accent: #5da3ff;
+  --accent: #5DA3FF;
+  --accent-contrast: #FFFFFF;
+  --dna-background: linear-gradient(135deg, #EAF4FF 0%, #C7E0FF 100%);
+  --dna-shadow: 0 0 60px rgba(93,163,255,0.3);
 }
 
 :root[data-dna-theme="robot"] {
-  --accent: #b673ff;
+  --accent: #B673FF;
+  --accent-contrast: #FFFFFF;
+  --dna-background: linear-gradient(135deg, #E9E1FF 0%, #D2B8FF 100%);
+  --dna-shadow: 0 0 60px rgba(182,115,255,0.3);
 }
 
 :root[data-dna-theme="demon"] {
-  --accent: #ff4d4d;
+  --accent: #FF4D4D;
+  --accent-contrast: #FFFFFF;
+  --dna-background: linear-gradient(135deg, #FFD9D9 0%, #FFAAAA 100%);
+  --dna-shadow: 0 0 60px rgba(255,77,77,0.3);
 }
 
 :root[data-dna-theme="angel"] {
-  --accent: #f9b8e1;
+  --accent: #F9B8E1;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #FFF0F9 0%, #FFD9EF 100%);
+  --dna-shadow: 0 0 60px rgba(249,184,225,0.3);
 }
 
 :root[data-dna-theme="reptile"] {
-  --accent: #9adf4d;
+  --accent: #9ADF4D;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #E8F7D2 0%, #D0F0A0 100%);
+  --dna-shadow: 0 0 60px rgba(154,223,77,0.3);
 }
 
 :root[data-dna-theme="undead"] {
-  --accent: #4a7aaf;
+  --accent: #4A7AAF;
+  --accent-contrast: #FFFFFF;
+  --dna-background: linear-gradient(135deg, #DDEAF8 0%, #B8D0E8 100%);
+  --dna-shadow: 0 0 60px rgba(74,122,175,0.3);
 }
 
 :root[data-dna-theme="alien"] {
-  --accent: #00ffa3;
+  --accent: #00FFA3;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #D6FFEF 0%, #A0FFD6 100%);
+  --dna-shadow: 0 0 60px rgba(0,255,163,0.3);
 }
 
 :root[data-dna-theme="murakami"] {
-  --accent: #ff6bda;
+  --accent: #FF6BDA;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #FFE6FA 0%, #FFD0F5 100%);
+  --dna-shadow: 0 0 60px rgba(255,107,218,0.3);
+}
+
+/* ========================================
+   Apply DNA Background to Page
+   ======================================== */
+
+html, body {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--dna-background);
+  transition: background 0.5s ease;
+}
+
+/* App container fallback */
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ========================================
@@ -200,6 +255,46 @@
 
 .accent-bg {
   background-color: var(--accent);
+}
+
+/* DNA-themed primary button - uses theme accent */
+.dna-primary-button {
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  border: 2px solid #1C1C1C;
+  padding: 0.75rem 1.5rem;
+  border-radius: 24px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  box-shadow: var(--dna-shadow);
+}
+
+.dna-primary-button:hover {
+  filter: brightness(1.1);
+  transform: scale(1.02);
+}
+
+/* DNA-themed card with accent border on hover */
+.dna-card {
+  background: white;
+  border: 2px solid #1C1C1C;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.dna-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--dna-shadow);
+}
+
+/* DNA accent text (for headings, highlights) */
+.dna-accent-text {
+  color: var(--accent);
+}
+
+/* DNA glow effect */
+.dna-glow {
+  box-shadow: var(--dna-shadow);
 }
 
 .accent-border {

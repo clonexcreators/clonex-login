@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useCloneXAuth } from '../hooks/useCloneXAuth'
 import { useDNAThemes } from '../hooks/useDNAThemes'
 import { DNA_THEMES } from '../theme/dna'
+import { DEFAULT_AVATAR_SIMPLE } from '../constants/defaultAvatar'
 
 // Phase 2.5 Enhanced Components
 import DNASelector from './profile/DNASelector'
@@ -138,16 +139,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setLoading(true)
       setError(null)
 
-      const token = localStorage.getItem('clonex_auth_token')
-      if (!token) {
-        throw new Error('No authentication token found')
-      }
-
+      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
+      // Session cookie is sent automatically with credentials: 'include'
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        credentials: 'include'  // CRITICAL: Send session cookie
       })
 
       if (!response.ok) {
@@ -156,19 +155,73 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
 
       const data = await response.json()
       if (data.success && data.profile) {
-        setProfile(data.profile)
-        setDisplayName(data.profile.displayName || '')
-        setBio(data.profile.bio || '')
+        // Ensure all required nested objects exist with defaults
+        const normalizedProfile: UserProfile = {
+          ...data.profile,
+          access: data.profile.access || {
+            hasAccess: false,
+            eligibleNFTs: 0,
+            accessReason: 'Unknown'
+          },
+          nfts: data.profile.nfts || {
+            collections: {},
+            totalNFTs: 0,
+            totalDelegatedNFTs: 0
+          },
+          social: data.profile.social || {},
+          privacy: data.profile.privacy || {
+            profilePublic: true,
+            showNfts: true,
+            showWallet: false
+          },
+          gmPoints: data.profile.gmPoints || {
+            total: 0,
+            lastClaimed: null,
+            totalClaims: 0,
+            canClaim: false
+          },
+          avatar: data.profile.avatar || {
+            url: null,
+            type: 'default'
+          }
+        }
+        setProfile(normalizedProfile)
+        setDisplayName(normalizedProfile.displayName || '')
+        setBio(normalizedProfile.bio || '')
         setPrivacy(data.profile.privacy)
         
         // Refresh DNA themes from NFT data
-        if (nftData?.breakdown) {
-          const allNFTs = [
-            ...(nftData.breakdown.direct?.nfts || []),
-            ...(nftData.breakdown['delegate.xyz']?.nfts || []),
-            ...(nftData.breakdown['warm.xyz']?.nfts || [])
-          ]
-          refreshOwnedDNA(allNFTs)
+        // Support multiple API response formats:
+        // 1. nftData.nfts (top-level array)
+        // 2. nftData.breakdown.direct/delegated (breakdown format)
+        // 3. nftData.nftCollections.clonex/animus (collection format)
+        if (nftData) {
+          let allNFTs: any[] = []
+
+          // Try top-level nfts array first (most common)
+          if (nftData.nfts && Array.isArray(nftData.nfts)) {
+            allNFTs = nftData.nfts
+          }
+          // Fall back to breakdown format
+          else if (nftData.breakdown) {
+            allNFTs = [
+              ...(nftData.breakdown.direct?.nfts || []),
+              ...(nftData.breakdown.delegated?.nfts || [])
+            ]
+          }
+          // Fall back to nftCollections format
+          else if (nftData.nftCollections) {
+            allNFTs = [
+              ...(nftData.nftCollections.clonex?.tokens || []),
+              ...(nftData.nftCollections.animus?.tokens || []),
+              ...(nftData.nftCollections.animus_eggs?.tokens || []),
+              ...(nftData.nftCollections.clonex_vials?.tokens || [])
+            ]
+          }
+
+          if (allNFTs.length > 0) {
+            refreshOwnedDNA(allNFTs)
+          }
         }
       }
     } catch (err: any) {
@@ -185,17 +238,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setError(null)
       setSuccessMessage(null)
 
-      const token = localStorage.getItem('clonex_auth_token')
-      if (!token) {
-        throw new Error('No authentication token found')
-      }
-
+      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
+        credentials: 'include',  // CRITICAL: Send session cookie
         body: JSON.stringify({
           displayName: displayName.trim() || null,
           bio: bio.trim() || null
@@ -227,17 +276,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setError(null)
       setSuccessMessage(null)
 
-      const token = localStorage.getItem('clonex_auth_token')
-      if (!token) {
-        throw new Error('No authentication token found')
-      }
-
+      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
+        credentials: 'include',  // CRITICAL: Send session cookie
         body: JSON.stringify({ privacy })
       })
 
@@ -495,7 +540,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
               <ResponsiveStack direction="responsive" gap={6} align="start">
                 <div className="relative">
                   <motion.img
-                    src={profile.avatar.url || '/default-avatar.png'}
+                    src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
                     alt="Profile Avatar"
                     className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-white shadow-lg"
                     whileHover={{ scale: 1.05 }}
@@ -551,7 +596,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
               <ResponsiveStack direction="responsive" gap={6} align="start">
                 <div className="relative">
                   <img
-                    src={profile.avatar.url || '/default-avatar.png'}
+                    src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
                     alt="Profile Avatar"
                     className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-100"
                   />
@@ -765,7 +810,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                 >
                   <div className="text-center">
                     <motion.img
-                      src={profile.avatar.url || '/default-avatar.png'}
+                      src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
                       alt="Current Avatar"
                       className="w-32 h-32 rounded-full object-cover border-4 border-gray-100 mx-auto mb-4"
                       whileHover={{ scale: 1.1 }}

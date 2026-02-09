@@ -1,15 +1,17 @@
-// CloneX DNA Theme Hook - Official Integration Specification
-// Version: 3.6.1 - Aligned with official CloneX DNA Theme specs
+// CloneX DNA Theme Hook - JSON-Backed Theme System
+// Version: 3.7.0 - Uses dna-themes.json as canonical source
 
-import { useState, useEffect, useCallback } from 'react'
-import { 
-  DNAType, 
-  DNATheme, 
-  DNA_THEMES, 
-  getDNATheme, 
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  DNAType,
+  DNATheme,
+  loadDNAThemes,
+  getDNAThemesSync,
+  getDNATheme,
   applyDNATheme,
   DEFAULT_THEME,
-  STORAGE_KEY
+  STORAGE_KEY,
+  isValidDNAType
 } from '../theme/dna'
 
 interface DNAThemeState {
@@ -17,9 +19,10 @@ interface DNAThemeState {
   availableDNA: DNAType[]
   hasMurakamiDrip: boolean
   isLoading: boolean
+  configLoaded: boolean
 }
 
-interface UseDNAThemesReturn extends DNAThemeState {
+interface UseDNAThemesReturn extends Omit<DNAThemeState, 'configLoaded'> {
   setActiveDNA: (dnaType: DNAType) => void
   refreshOwnedDNA: (nfts: any[]) => void
   resetTheme: () => void
@@ -27,91 +30,105 @@ interface UseDNAThemesReturn extends DNAThemeState {
 
 /**
  * Hook to manage DNA theme selection and persistence
- * Following official CloneX DNA Theme Integration specification
- * 
+ * Uses dna-themes.json as canonical source with fallback
+ *
  * Features:
+ * - Loads themes from JSON config on mount
  * - Sets data-dna-theme attribute on document.documentElement
  * - Persists theme selection in localStorage
  * - Detects Murakami Drip finish from NFT metadata
- * - Applies --accent CSS variable based on theme
+ * - Applies CSS variables: --accent, --accent-contrast, --dna-background, --dna-shadow
+ * - Applies Murakami overlay variables when detected: --finish-gradient, --finish-speed, etc.
  */
 export function useDNAThemes(userDNA?: DNAType[]): UseDNAThemesReturn {
   const [state, setState] = useState<DNAThemeState>({
     activeDNA: null,
     availableDNA: [],
     hasMurakamiDrip: false,
-    isLoading: false
+    isLoading: false,
+    configLoaded: false
   })
 
-  // Load saved theme from localStorage on mount
+  const initRef = useRef(false)
+
+  // Load JSON config and saved theme on mount
   useEffect(() => {
-    const savedDNAType = localStorage.getItem(STORAGE_KEY) as DNAType | null
-    
-    if (savedDNAType && DNA_THEMES[savedDNAType]) {
-      setState(prev => ({ ...prev, activeDNA: savedDNAType }))
-      const theme = DNA_THEMES[savedDNAType]
-      applyDNATheme(theme, false)
-      
-      console.log('✅ DNA Theme loaded from storage:', savedDNAType)
-    } else {
-      // Apply default theme
-      applyDNATheme(DEFAULT_THEME, false)
-      setState(prev => ({ ...prev, activeDNA: 'human' }))
+    if (initRef.current) return
+    initRef.current = true
+
+    const initThemes = async () => {
+      // Load themes from JSON (cached after first load)
+      await loadDNAThemes()
+
+      // Get saved theme from localStorage
+      const savedDNAType = localStorage.getItem(STORAGE_KEY)
+
+      if (savedDNAType && isValidDNAType(savedDNAType)) {
+        const theme = getDNATheme(savedDNAType)
+        setState(prev => ({
+          ...prev,
+          activeDNA: savedDNAType as DNAType,
+          configLoaded: true
+        }))
+        applyDNATheme(theme, false)
+      } else {
+        // Apply default theme
+        applyDNATheme(DEFAULT_THEME, false)
+        setState(prev => ({
+          ...prev,
+          activeDNA: 'human',
+          configLoaded: true
+        }))
+      }
     }
+
+    initThemes()
   }, [])
 
   // Update available DNA when userDNA prop changes
   useEffect(() => {
     if (userDNA && userDNA.length > 0) {
-      setState(prev => ({ 
-        ...prev, 
+      setState(prev => ({
+        ...prev,
         availableDNA: userDNA,
         activeDNA: prev.activeDNA || userDNA[0]
       }))
-      
+
       // Apply first available theme if none selected
       if (!state.activeDNA && userDNA[0]) {
-        const theme = DNA_THEMES[userDNA[0]]
+        const theme = getDNATheme(userDNA[0])
         applyDNATheme(theme, state.hasMurakamiDrip)
       }
     }
   }, [userDNA])
 
-  // Apply selected DNA theme globally
+  // Apply selected DNA theme globally when activeDNA or murakami status changes
   useEffect(() => {
-    if (state.activeDNA) {
-      const theme = DNA_THEMES[state.activeDNA]
+    if (state.activeDNA && state.configLoaded) {
+      const theme = getDNATheme(state.activeDNA)
       if (theme) {
         applyDNATheme(theme, state.hasMurakamiDrip)
       }
     }
-  }, [state.activeDNA, state.hasMurakamiDrip])
+  }, [state.activeDNA, state.hasMurakamiDrip, state.configLoaded])
 
   // Set active DNA theme
   const setActiveDNA = useCallback((dnaType: DNAType) => {
-    const theme = DNA_THEMES[dnaType]
-    
-    if (!theme) {
+    if (!isValidDNAType(dnaType)) {
       console.warn('Invalid DNA type:', dnaType)
       return
     }
 
+    const theme = getDNATheme(dnaType)
+
     setState(prev => ({ ...prev, activeDNA: dnaType }))
     applyDNATheme(theme, state.hasMurakamiDrip)
     localStorage.setItem(STORAGE_KEY, dnaType)
-    
-    console.log('🎨 DNA Theme activated:', {
-      type: dnaType,
-      name: theme.name,
-      accent: theme.accent,
-      hasMurakamiFinish: state.hasMurakamiDrip
-    })
   }, [state.hasMurakamiDrip])
 
   // Extract DNA types from user's NFT collection
   const refreshOwnedDNA = useCallback((nfts: any[]) => {
     if (!nfts || nfts.length === 0) {
-      console.log('No NFTs provided for DNA detection')
       return
     }
 
@@ -122,20 +139,36 @@ export function useDNAThemes(userDNA?: DNAType[]): UseDNAThemesReturn {
       let hasMurakami = false
 
       nfts.forEach(nft => {
-        // Check if it's a CloneX NFT
-        if (nft.collection?.toLowerCase() === 'clonex' && nft.metadata) {
-          // Extract DNA type from metadata
-          const dna = nft.metadata.dna || nft.metadata.DNA
+        // Check if it's a CloneX NFT - support multiple field names
+        const collection = (nft.collection || nft.collectionName || '').toLowerCase()
+        const isCloneX = collection === 'clonex' || collection.includes('clonex')
+
+        if (isCloneX) {
+          // Get metadata - it might be at top level or nested
+          const metadata = nft.metadata || nft
+
+          // Extract DNA type from metadata - check multiple possible field names
+          const dna = metadata.dna || metadata.DNA ||
+            metadata.attributes?.find((a: any) =>
+              a.trait_type?.toLowerCase() === 'dna' ||
+              a.trait_type?.toLowerCase() === 'dna type'
+            )?.value
+
           if (dna) {
-            const normalizedDNA = dna.toLowerCase().replace(/[^a-z]/g, '') as DNAType
-            if (DNA_THEMES[normalizedDNA]) {
-              dnaTypes.add(normalizedDNA)
+            const normalizedDNA = String(dna).toLowerCase().replace(/[^a-z]/g, '')
+            if (isValidDNAType(normalizedDNA)) {
+              dnaTypes.add(normalizedDNA as DNAType)
             }
           }
 
           // Check for Murakami Drip finish (official spec)
-          const type = nft.metadata.type || nft.metadata.Type || ''
-          if (type.toLowerCase().includes('murakami drip')) {
+          const type = metadata.type || metadata.Type ||
+            metadata.attributes?.find((a: any) =>
+              a.trait_type?.toLowerCase() === 'type' ||
+              a.trait_type?.toLowerCase() === 'finish'
+            )?.value || ''
+
+          if (String(type).toLowerCase().includes('murakami drip')) {
             hasMurakami = true
             // Add murakami to available themes
             dnaTypes.add('murakami')
@@ -144,27 +177,20 @@ export function useDNAThemes(userDNA?: DNAType[]): UseDNAThemesReturn {
       })
 
       const ownedDNAArray = Array.from(dnaTypes)
-      
-      setState(prev => ({
-        ...prev,
-        availableDNA: ownedDNAArray,
-        hasMurakamiDrip: hasMurakami,
-        isLoading: false
-      }))
 
-      // Update current theme's Murakami finish if detected
-      if (hasMurakami && prev.activeDNA) {
-        const theme = DNA_THEMES[prev.activeDNA]
-        applyDNATheme(theme, true)
-        
-        // Set data-finish attribute per spec
-        document.documentElement.setAttribute('data-finish', 'murakami')
-      }
+      setState(prev => {
+        // Update current theme's Murakami finish if detected
+        if (hasMurakami && prev.activeDNA) {
+          const theme = getDNATheme(prev.activeDNA)
+          applyDNATheme(theme, true)
+        }
 
-      console.log('🧬 DNA types detected:', {
-        owned: ownedDNAArray,
-        hasMurakami,
-        total: ownedDNAArray.length
+        return {
+          ...prev,
+          availableDNA: ownedDNAArray,
+          hasMurakamiDrip: hasMurakami,
+          isLoading: false
+        }
       })
 
     } catch (error) {
@@ -179,13 +205,12 @@ export function useDNAThemes(userDNA?: DNAType[]): UseDNAThemesReturn {
       activeDNA: 'human',
       availableDNA: [],
       hasMurakamiDrip: false,
-      isLoading: false
+      isLoading: false,
+      configLoaded: true
     })
-    
+
     applyDNATheme(DEFAULT_THEME, false)
     localStorage.removeItem(STORAGE_KEY)
-    
-    console.log('🔄 DNA Theme reset to default')
   }, [])
 
   return {

@@ -38,16 +38,17 @@
   * {
     @apply font-sans;
   }
-  
+
   body {
     font-family: 'Inter', 'Rajdhani', system-ui, -apple-system, sans-serif;
     font-weight: 500;
-    background-color: var(--bg);
+    /* DNA theme background is set via dna.css using var(--dna-background) */
+    /* Only set text color here, not background */
     color: var(--text-main);
     /* Ensure fonts are actually used immediately */
     font-display: swap;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Inter', system-ui, sans-serif;
     font-weight: 800;
@@ -68,13 +69,15 @@
   }
   
   .lab-button-primary {
-    @apply bg-[#FF5AF7] text-black border-2 border-[#1C1C1C] font-bold;
+    @apply text-black border-2 border-[#1C1C1C] font-bold;
+    background-color: var(--accent, #FF5AF7);
     border-radius: var(--border-radius-pill);
     transition: all 0.15s ease;
   }
-  
+
   .lab-button-primary:hover {
-    @apply bg-[#FF3AE6] transform scale-105;
+    filter: brightness(0.9);
+    @apply transform scale-105;
   }
   
   .lab-button-secondary {
