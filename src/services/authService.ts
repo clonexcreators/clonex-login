@@ -64,7 +64,6 @@ class AuthService {
     signature: string,
     nonce: string
   ): Promise<AuthResponse> {
-    console.log('🔐 Verifying signature with cookie-based auth...');
     const response = await fetch(`${API_URL}/api/auth/wallet/verify`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -73,7 +72,6 @@ class AuthService {
     });
 
     const result = await this.handleResponse<AuthResponse>(response);
-    console.log('🍪 Cookie should be set by backend, cookieMode:', result.cookieMode);
     return result;
   }
 
@@ -83,7 +81,6 @@ class AuthService {
    * Cookie is sent automatically with credentials: 'include'
    */
   async validateSession(): Promise<SessionStatusResponse> {
-    console.log('🍪 Validating session via cookie...');
     const response = await fetch(`${API_URL}/api/auth/session`, {
       method: 'GET',
       headers: this.getHeaders(),
@@ -116,10 +113,63 @@ class AuthService {
   }
 
   /**
+   * Fetch user profile data (displayName, avatar, bio, etc.)
+   * Requires authenticated session (cookie-based)
+   */
+  async fetchProfile(): Promise<{
+    success: boolean;
+    profile?: {
+      walletAddress: string;
+      displayName: string | null;
+      bio: string | null;
+      avatar: {
+        type: string | null;
+        url: string | null;
+        collectionId: string | null;
+        tokenId: string | null;
+        updatedAt: string | null;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const response = await fetch(`${API_URL}/api/user/profile`, {
+        headers: this.getHeaders(),
+        credentials: 'include'
+      });
+
+      // Handle 401 gracefully - profile may not exist yet
+      if (response.status === 401) {
+        return {
+          success: false,
+          error: 'Not authenticated'
+        };
+      }
+
+      const data = await this.handleResponse<any>(response);
+
+      return {
+        success: true,
+        profile: {
+          walletAddress: data.walletAddress,
+          displayName: data.displayName,
+          bio: data.bio,
+          avatar: data.avatar
+        }
+      };
+    } catch (err) {
+      console.warn('Failed to fetch profile:', err);
+      return {
+        success: false,
+        error: (err as Error).message
+      };
+    }
+  }
+
+  /**
    * Logout - Backend clears the httpOnly cookie
    */
   async logout(): Promise<{ success: boolean; message: string }> {
-    console.log('🚪 Logging out (clearing cookie)...');
     const response = await fetch(`${API_URL}/api/auth/logout`, {
       method: 'POST',
       headers: this.getHeaders(),
@@ -176,6 +226,22 @@ class AuthService {
     } catch (error) {
       console.warn('Invalid token format:', error);
       return true;
+    }
+  }
+
+  /**
+   * Decode JWT token payload
+   * @deprecated Cookie-based auth handles tokens automatically, but kept for backward compatibility
+   */
+  decodeToken(token?: string): any {
+    try {
+      const authToken = token || this.getToken();
+      if (!authToken) return null;
+
+      return JSON.parse(atob(authToken.split('.')[1]));
+    } catch (error) {
+      console.warn('Failed to decode token:', error);
+      return null;
     }
   }
 }

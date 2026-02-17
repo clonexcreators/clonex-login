@@ -14,7 +14,7 @@
   /* CloneX Research Facility Color Palette - Flat Only */
   --bg: #FAFAF0;
   --primary: #FF5AF7;
-  --accent: #00C2FF;
+  /* --accent is controlled by dna.css / DNA theme system — do NOT set here */
   --tag: #6EFFC7;
   --text-main: #000000;
   --text-subtle: #4A4A4A;

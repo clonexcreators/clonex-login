@@ -1,0 +1,71 @@
+{
+  "name": "@clonex/auth",
+  "version": "1.0.0",
+  "description": "Universal authentication SDK for the CloneX ecosystem",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./oauth": {
+      "import": "./dist/oauth.mjs",
+      "require": "./dist/oauth.js",
+      "types": "./dist/oauth.d.ts"
+    },
+    "./components": {
+      "import": "./dist/components/index.mjs",
+      "require": "./dist/components/index.js",
+      "types": "./dist/components/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.0.0",
+    "@tanstack/react-query": "^5.0.0",
+    "viem": "^2.0.0",
+    "wagmi": "^2.0.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "clonex",
+    "nft",
+    "authentication",
+    "web3",
+    "ethereum",
+    "wallet",
+    "oauth",
+    "rtfkt"
+  ],
+  "author": "CloneX",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clonex/auth-sdk"
+  },
+  "homepage": "https://clonex.wtf",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

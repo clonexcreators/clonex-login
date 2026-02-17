@@ -37,19 +37,15 @@ export const initiateSocialOAuth = async (
   platform: SocialPlatform
 ): Promise<OAuthInitResponse> => {
   try {
-    const token = localStorage.getItem('clonex_auth_token')
-    if (!token) {
-      throw new Error('Authentication required')
-    }
-
+    // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
     const response = await fetch(
       `${API_BASE}/api/user/social/${platform}/connect`,
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        credentials: 'include'  // CRITICAL: Send session cookie
       }
     )
 
@@ -78,19 +74,15 @@ export const disconnectSocialPlatform = async (
   platform: SocialPlatform
 ): Promise<OAuthDisconnectResponse> => {
   try {
-    const token = localStorage.getItem('clonex_auth_token')
-    if (!token) {
-      throw new Error('Authentication required')
-    }
-
+    // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
     const response = await fetch(
       `${API_BASE}/api/user/social/${platform}/disconnect`,
       {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        credentials: 'include'  // CRITICAL: Send session cookie
       }
     )
 
@@ -181,19 +173,15 @@ export const completeOAuth = async (
   state: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const token = localStorage.getItem('clonex_auth_token')
-    if (!token) {
-      throw new Error('Authentication required')
-    }
-
+    // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
     const response = await fetch(
       `${API_BASE}/api/user/social/${platform}/callback`,
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
+        credentials: 'include',  // CRITICAL: Send session cookie
         body: JSON.stringify({ code, state })
       }
     )

@@ -1,7 +1,8 @@
 // CloneX Compact Auth Modal - Unified Sign-In and Profile Modal
 // Handles: Connect Wallet -> Sign Message -> Authenticated Profile View
+// PHASE-0 FIX: Uses authStatus state machine for reliable view switching
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { useAccount, useDisconnect } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useCloneXAuth } from '../hooks/useCloneXAuth';
@@ -24,21 +25,50 @@ export const CompactAuthModal: React.FC<CompactAuthModalProps> = ({ isOpen, onCl
     login,
     logout,
     clearError,
-    nftData
+    nftData,
+    authStatus
   } = useCloneXAuth();
 
-  const [view, setView] = useState<ModalView>('connect');
+  // Track previous authStatus to detect transition to 'ready'
+  const prevAuthStatus = useRef(authStatus);
+  const wasAuthenticating = useRef(false);
 
-  // Determine current view based on state
+  // Track when we enter authenticating state
   useEffect(() => {
-    if (isAuthenticated && user) {
-      setView('profile');
-    } else if (isConnected && !isAuthenticated) {
-      setView('sign-in');
-    } else {
-      setView('connect');
+    if (authStatus === 'authenticating' || authStatus === 'loading_nfts') {
+      wasAuthenticating.current = true;
     }
-  }, [isConnected, isAuthenticated, user]);
+  }, [authStatus]);
+
+  // PHASE-0 FIX: Auto-close modal when authentication completes successfully
+  useEffect(() => {
+    // If modal is open and we were authenticating and now we're ready, close the modal
+    if (isOpen && wasAuthenticating.current && authStatus === 'ready') {
+      console.log('✅ [CompactAuthModal] Auth complete, auto-closing modal');
+      wasAuthenticating.current = false;
+      onClose();
+    }
+    prevAuthStatus.current = authStatus;
+  }, [authStatus, isOpen, onClose]);
+
+  // PHASE-0 FIX: Derive view from authStatus (single source of truth)
+  // This prevents flickering and race conditions
+  const view = useMemo<ModalView>(() => {
+    switch (authStatus) {
+      case 'ready':
+      case 'loading_nfts':
+        return 'profile';
+      case 'wallet_connected':
+      case 'authenticating':
+        return 'sign-in';
+      case 'booting':
+      case 'idle':
+      case 'error':
+      default:
+        // During booting, show connect view but with loading indicator handled by button
+        return isConnected ? 'sign-in' : 'connect';
+    }
+  }, [authStatus, isConnected]);
 
   // Handle sign-in
   const handleSignIn = async () => {
@@ -145,10 +175,10 @@ export const CompactAuthModal: React.FC<CompactAuthModalProps> = ({ isOpen, onCl
 
                 <button
                   onClick={handleSignIn}
-                  disabled={isLoading}
+                  disabled={authStatus === 'authenticating'}
                   className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-bold uppercase text-sm hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isLoading ? (
+                  {authStatus === 'authenticating' ? (
                     <>
                       <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -205,12 +235,17 @@ export const CompactAuthModal: React.FC<CompactAuthModalProps> = ({ isOpen, onCl
                 </div>
               </div>
 
-              {/* Access Level */}
-              {user.accessLevel && (
+              {/* NFT Holdings Summary - Neutral, no tier language */}
+              {nftData && (
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-xs font-bold text-gray-500 uppercase mb-1">Access Level</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase mb-1">Verified Holdings</p>
                   <p className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-purple-600">
-                    {user.accessLevel.replace(/_/g, ' ')}
+                    {(() => {
+                      const clonex = nftData.nftCollections?.clonex?.count || 0;
+                      const animus = nftData.nftCollections?.animus?.count || 0;
+                      const total = clonex + animus;
+                      return `${total} NFT${total !== 1 ? 's' : ''} Verified`;
+                    })()}
                   </p>
                 </div>
               )}

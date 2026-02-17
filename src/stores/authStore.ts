@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AuthChallenge, AuthError } from '../types';
-import { AuthUser } from '../config/api';
+import { AuthUser, NFTVerificationResponse } from '../config/api';
 import { authService } from '../services/authService';
 import { cookieService } from '../services/cookieService';
 import { ENV_CONFIG } from '../config/environment';
@@ -16,13 +16,32 @@ interface JWTClaims {
   nonce?: string;
 }
 
+// Canonical Auth Status State Machine (Phase-0 Fix)
+// Single source of truth for auth lifecycle - prevents race conditions
+export type AuthStatus =
+  | 'booting'           // Initial state, checking for existing session
+  | 'idle'              // No wallet connected, ready to connect
+  | 'wallet_connected'  // Wallet connected, ready to sign in
+  | 'authenticating'    // Sign-in in progress (nonce -> sign -> verify)
+  | 'loading_nfts'      // Authenticated, loading NFT data
+  | 'ready'             // Fully authenticated with NFT data loaded
+  | 'error';            // Error state (temporary, transitions back)
+
 interface AuthStoreState {
+  // Canonical state machine status
+  authStatus: AuthStatus;
+  // Hydration tracking for persist middleware
+  _hasHydrated: boolean;
+
   user: AuthUser | null;
+  nftData: NFTVerificationResponse | null;  // NFT verification data stored globally
   isConnected: boolean;
   isAuthenticated: boolean;
   walletAddress: string | null;
   authToken: string | null;
   challenge: AuthChallenge | null;
+  // DEPRECATED: isLoading is derived from authStatus now
+  // Kept for backward compatibility with components that haven't migrated
   isLoading: boolean;
   isSigningChallenge: boolean;
   error: string | null;
@@ -30,20 +49,31 @@ interface AuthStoreState {
 }
 
 interface AuthStore extends AuthStoreState {
+  // Hydration tracking
+  setHasHydrated: (hydrated: boolean) => void;
+
+  // State Machine Control (Phase-0 Fix)
+  setAuthStatus: (status: AuthStatus) => void;
+  transitionTo: (status: AuthStatus, options?: { error?: string }) => void;
+
   // User Management
   setUser: (user: AuthUser | null) => void;
-  
+  updateUserProfile: (profile: Partial<AuthUser>) => void;
+
+  // NFT Data Management
+  setNFTData: (data: NFTVerificationResponse | null) => void;
+
   // Connection Management
   setConnected: (connected: boolean, address?: string) => void;
-  
+
   // Authentication Flow
   setChallenge: (challenge: AuthChallenge | null) => void;
   setSigningChallenge: (signing: boolean) => void;
   setAuthenticated: (authenticated: boolean, token?: string) => void;
-  
-  // Loading States
+
+  // Loading States (DEPRECATED - use transitionTo instead)
   setLoading: (loading: boolean) => void;
-  
+
   // Error Handling
   setError: (error: string | null) => void;
   setAuthError: (error: AuthError | null) => void;
@@ -75,20 +105,60 @@ const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours (fallback)
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
-      // Initial State
+      // Initial State - Canonical State Machine (Phase-0 Fix)
+      authStatus: 'booting' as AuthStatus,
+      _hasHydrated: false,
+
       user: null,
+      nftData: null,
       isConnected: false,
       isAuthenticated: false,
       walletAddress: null,
       authToken: null,
       challenge: null,
-      isLoading: false,
+      // DEPRECATED: isLoading derived from authStatus
+      // Kept for backward compatibility
+      isLoading: true,
       isSigningChallenge: false,
       error: null,
       lastAuthTime: null,
 
+      // Hydration tracking
+      setHasHydrated: (_hasHydrated) => set({ _hasHydrated }),
+
+      // State Machine Control (Phase-0 Fix)
+      setAuthStatus: (authStatus) => {
+        const isLoading = ['booting', 'authenticating', 'loading_nfts'].includes(authStatus);
+        set({ authStatus, isLoading });
+      },
+
+      transitionTo: (authStatus, options) => {
+        const isLoading = ['booting', 'authenticating', 'loading_nfts'].includes(authStatus);
+        const updates: Partial<AuthStoreState> = { authStatus, isLoading };
+        if (options?.error !== undefined) {
+          updates.error = options.error;
+        }
+        // Always log transitions for debugging
+        console.log(`🔄 [AuthStore] Transition to: ${authStatus}`, options?.error ? `(error: ${options.error})` : '');
+        set(updates);
+        // Log the new state to confirm update
+        console.log(`🔄 [AuthStore] New state after set:`, { authStatus: get().authStatus, isLoading: get().isLoading });
+      },
+
       // User Management
       setUser: (user) => set({ user }),
+
+      // Update partial profile data (for avatar/displayName updates without full re-auth)
+      updateUserProfile: (profile) => {
+        const currentUser = get().user;
+        if (currentUser) {
+          set({ user: { ...currentUser, ...profile } });
+          console.log('🔄 [AuthStore] User profile updated:', Object.keys(profile));
+        }
+      },
+
+      // NFT Data Management
+      setNFTData: (nftData) => set({ nftData }),
 
       // Connection Management
       setConnected: (isConnected, walletAddress) => 
@@ -148,7 +218,8 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      // Loading States
+      // Loading States (DEPRECATED - use transitionTo instead)
+      // Kept for backward compatibility
       setLoading: (isLoading) => set({ isLoading }),
 
       // Error Handling
@@ -277,18 +348,20 @@ export const useAuthStore = create<AuthStore>()(
       // Complete logout
       logout: () => {
         localStorage.removeItem(AUTH_TOKEN_KEY);
-        
+
         // Clear cross-domain session
         if (ENV_CONFIG.isCloneXDomain) {
           cookieService.clearAuthSession();
         }
-        
+
         if (ENV_CONFIG.showApiDebug) {
           console.log('👋 User logged out from all subdomains');
         }
-        
-        set({ 
+
+        set({
+          authStatus: 'idle' as AuthStatus,
           user: null,
+          nftData: null,
           isConnected: false,
           isAuthenticated: false,
           walletAddress: null,
@@ -307,9 +380,18 @@ export const useAuthStore = create<AuthStore>()(
         authToken: state.authToken,
         lastAuthTime: state.lastAuthTime,
         isAuthenticated: state.isAuthenticated,
+        // Don't persist authStatus - always start fresh with 'booting'
       }),
       // Rehydrate auth state on app load
       onRehydrateStorage: () => (state) => {
+        // Mark hydration complete - this triggers the bootstrap effect
+        // Note: We call setHasHydrated after a microtask to ensure store is ready
+        console.log('🔄 [AuthStore] onRehydrateStorage called, scheduling hydration flag...');
+        setTimeout(() => {
+          useAuthStore.getState().setHasHydrated(true);
+          console.log('🔄 [AuthStore] Hydration complete, _hasHydrated = true');
+        }, 0);
+
         if (state?.authToken) {
           // Validate token on rehydration
           const isValid = !authService.isTokenExpired(state.authToken);

@@ -57,6 +57,27 @@ export const ProductionNFTDashboard: React.FC = () => {
       collections = calculateCollectionCounts(nfts);
     }
 
+    // Extract owned/delegated breakdown from nftData
+    const breakdown = nftData?.breakdown;
+    const collectionsBreakdown = {
+      clonex: {
+        owned: breakdown?.direct?.collections?.clonex || 0,
+        delegated: breakdown?.delegated?.collections?.clonex || 0
+      },
+      animus: {
+        owned: breakdown?.direct?.collections?.animus || 0,
+        delegated: breakdown?.delegated?.collections?.animus || 0
+      },
+      animus_eggs: {
+        owned: breakdown?.direct?.collections?.animus_eggs || 0,
+        delegated: breakdown?.delegated?.collections?.animus_eggs || 0
+      },
+      clonex_vials: {
+        owned: breakdown?.direct?.collections?.clonex_vials || 0,
+        delegated: breakdown?.delegated?.collections?.clonex_vials || 0
+      }
+    };
+
     // Calculate access level from collections (used for subdomain access checks only)
     const accessLevel: AccessLevel = authUser.accessLevel || calculateAccessLevel(collections);
 
@@ -64,6 +85,8 @@ export const ProductionNFTDashboard: React.FC = () => {
       walletAddress: authUser.walletAddress,
       accessLevel,
       collections,
+      collectionsBreakdown,
+      hasBreakdown: !!(breakdown?.direct || breakdown?.delegated),
       nfts,
       lastVerified: nftData?.lastVerified || new Date().toISOString(),
       verificationMethod: (nftData?.verificationMethod?.toLowerCase() || 'alchemy') as 'alchemy' | 'moralis' | 'etherscan',
@@ -154,6 +177,12 @@ export const ProductionNFTDashboard: React.FC = () => {
             <h3 className="lab-heading-md mb-4 text-black">CLONEX</h3>
             <p className="text-4xl font-black text-black mb-2">{user.collections.clonex}</p>
             <StatusBadge status="verified" text="VERIFIED" />
+            {user.hasBreakdown && (
+              <div className="mt-3 text-xs text-black/70 font-medium">
+                <span className="mr-2">{user.collectionsBreakdown.clonex.owned} Owned</span>
+                <span>{user.collectionsBreakdown.clonex.delegated} Delegated</span>
+              </div>
+            )}
           </StickerCard>
 
           {/* Animus Collection - Always show */}
@@ -164,6 +193,12 @@ export const ProductionNFTDashboard: React.FC = () => {
             <h3 className="lab-heading-md mb-4 text-black">ANIMUS</h3>
             <p className="text-4xl font-black text-black mb-2">{user.collections.animus}</p>
             <StatusBadge status="verified" text="VERIFIED" />
+            {user.hasBreakdown && (
+              <div className="mt-3 text-xs text-black/70 font-medium">
+                <span className="mr-2">{user.collectionsBreakdown.animus.owned} Owned</span>
+                <span>{user.collectionsBreakdown.animus.delegated} Delegated</span>
+              </div>
+            )}
           </StickerCard>
 
           {/* Animus Eggs - Only show if count > 0 */}
@@ -175,6 +210,12 @@ export const ProductionNFTDashboard: React.FC = () => {
               <h3 className="lab-heading-md mb-4 text-black">ANIMUS EGGS</h3>
               <p className="text-4xl font-black text-black mb-2">{user.collections.animus_eggs}</p>
               <StatusBadge status="verified" text="VERIFIED" />
+              {user.hasBreakdown && (
+                <div className="mt-3 text-xs text-black/70 font-medium">
+                  <span className="mr-2">{user.collectionsBreakdown.animus_eggs.owned} Owned</span>
+                  <span>{user.collectionsBreakdown.animus_eggs.delegated} Delegated</span>
+                </div>
+              )}
             </StickerCard>
           )}
 
@@ -187,6 +228,12 @@ export const ProductionNFTDashboard: React.FC = () => {
               <h3 className="lab-heading-md mb-4 text-black">CLONEX VIALS</h3>
               <p className="text-4xl font-black text-black mb-2">{user.collections.clonex_vials}</p>
               <StatusBadge status="verified" text="VERIFIED" />
+              {user.hasBreakdown && (
+                <div className="mt-3 text-xs text-black/70 font-medium">
+                  <span className="mr-2">{user.collectionsBreakdown.clonex_vials.owned} Owned</span>
+                  <span>{user.collectionsBreakdown.clonex_vials.delegated} Delegated</span>
+                </div>
+              )}
             </StickerCard>
           )}
         </div>

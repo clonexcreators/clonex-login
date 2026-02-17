@@ -1,4 +1,5 @@
-// CloneX Universal Login - Enhanced Profile Page (v3.6.4 - Phase 2.5 DNA Polish)
+// CloneX Universal Login - Enhanced Profile Page (v3.7.0 - Single Page Consolidated)
+// Refactored: Removed tabbed interface, consolidated ALL profile features into single cohesive page
 import React, { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -8,24 +9,19 @@ import { DNA_THEMES } from '../theme/dna'
 import { DEFAULT_AVATAR_SIMPLE } from '../constants/defaultAvatar'
 
 // Phase 2.5 Enhanced Components
-import DNASelector from './profile/DNASelector'
-import { DnaBadge, DnaBadgeGroup } from './profile/DnaBadge'
-import { DNAIndicator, DNAThemedContainer, DNAProfileHeader } from './profile/DNAIndicator'
 import AvatarPicker from './profile/AvatarPicker'
 import AvatarUploader from './profile/AvatarUploader'
 import { SocialConnections } from './profile/SocialConnections'
 import { ProfileResetModal } from './profile/ProfileResetModal'
+import { WarmDelegation } from './profile/WarmDelegation'
 
 // Responsive & Accessibility Components
-import { 
+import {
   ResponsiveContainer,
   ResponsiveCard,
-  ResponsiveTabs,
-  ResponsiveStack,
-  ShowOnMobile,
-  ShowOnDesktop
+  ResponsiveStack
 } from './ResponsiveLayout'
-import { 
+import {
   SkipToContent,
   AccessibleButton,
   LiveRegion,
@@ -33,7 +29,7 @@ import {
 } from './AccessibilityUtils'
 
 import { avatarService, NFTAvatar } from '../services/avatarService'
-import { profileService } from '../services/profileService'
+import { useAuthStore } from '../stores/authStore'
 
 interface ProfilePageProps {
   onNavigateBack?: () => void
@@ -89,10 +85,25 @@ interface UserProfile {
   updatedAt: string
 }
 
+// Section Header Component
+const SectionHeader: React.FC<{ title: string; icon: React.ReactNode }> = ({ title, icon }) => (
+  <div className="flex items-center gap-3 mb-4">
+    <div className="w-8 h-8 rounded-lg bg-gray-100 border-2 border-[#1C1C1C] flex items-center justify-center">
+      {icon}
+    </div>
+    <h3 className="text-lg font-bold text-black">{title}</h3>
+  </div>
+)
+
+// Section Divider
+const SectionDivider: React.FC = () => (
+  <div className="border-t-2 border-[#1C1C1C] my-8" />
+)
+
 export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
   const { address } = useAccount()
   const { isAuthenticated, nftData } = useCloneXAuth()
-  
+
   // DNA Theme system
   const {
     activeDNA,
@@ -101,13 +112,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
     setActiveDNA,
     refreshOwnedDNA
   } = useDNAThemes()
-  
+
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
-  
+
   // Form state
   const [displayName, setDisplayName] = useState('')
   const [bio, setBio] = useState('')
@@ -118,10 +129,40 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
   })
 
   // Avatar modals state
-  const [activeTab, setActiveTab] = useState<'profile' | 'privacy' | 'avatar' | 'social' | 'dna'>('profile')
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const [showAvatarUploader, setShowAvatarUploader] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
+
+  // Theme state
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('clonex-dark-mode') === 'true'
+  })
+  const [murakamiEnabled, setMurakamiEnabled] = useState(hasMurakamiDrip)
+
+  // Apply dark mode to document
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark')
+      localStorage.setItem('clonex-dark-mode', 'true')
+    } else {
+      document.documentElement.removeAttribute('data-theme')
+      localStorage.setItem('clonex-dark-mode', 'false')
+    }
+  }, [darkMode])
+
+  // Apply Murakami finish
+  useEffect(() => {
+    if (murakamiEnabled && hasMurakamiDrip) {
+      document.documentElement.setAttribute('data-finish', 'murakami')
+    } else {
+      document.documentElement.removeAttribute('data-finish')
+    }
+  }, [murakamiEnabled, hasMurakamiDrip])
+
+  // Sync murakami state when NFT data loads
+  useEffect(() => {
+    setMurakamiEnabled(hasMurakamiDrip)
+  }, [hasMurakamiDrip])
 
   // Fetch profile on mount
   useEffect(() => {
@@ -139,14 +180,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setLoading(true)
       setError(null)
 
-      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
-      // Session cookie is sent automatically with credentials: 'include'
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
         },
-        credentials: 'include'  // CRITICAL: Send session cookie
+        credentials: 'include'
       })
 
       if (!response.ok) {
@@ -155,7 +194,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
 
       const data = await response.json()
       if (data.success && data.profile) {
-        // Ensure all required nested objects exist with defaults
         const normalizedProfile: UserProfile = {
           ...data.profile,
           access: data.profile.access || {
@@ -189,28 +227,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
         setDisplayName(normalizedProfile.displayName || '')
         setBio(normalizedProfile.bio || '')
         setPrivacy(data.profile.privacy)
-        
+
+        // Sync profile avatar and displayName to global auth store
+        // This ensures WalletButton shows correct avatar on page load
+        useAuthStore.getState().updateUserProfile({
+          displayName: normalizedProfile.displayName,
+          bio: normalizedProfile.bio,
+          avatar: normalizedProfile.avatar
+        })
+
         // Refresh DNA themes from NFT data
-        // Support multiple API response formats:
-        // 1. nftData.nfts (top-level array)
-        // 2. nftData.breakdown.direct/delegated (breakdown format)
-        // 3. nftData.nftCollections.clonex/animus (collection format)
         if (nftData) {
           let allNFTs: any[] = []
 
-          // Try top-level nfts array first (most common)
           if (nftData.nfts && Array.isArray(nftData.nfts)) {
             allNFTs = nftData.nfts
-          }
-          // Fall back to breakdown format
-          else if (nftData.breakdown) {
+          } else if (nftData.breakdown) {
             allNFTs = [
               ...(nftData.breakdown.direct?.nfts || []),
               ...(nftData.breakdown.delegated?.nfts || [])
             ]
-          }
-          // Fall back to nftCollections format
-          else if (nftData.nftCollections) {
+          } else if (nftData.nftCollections) {
             allNFTs = [
               ...(nftData.nftCollections.clonex?.tokens || []),
               ...(nftData.nftCollections.animus?.tokens || []),
@@ -238,13 +275,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setError(null)
       setSuccessMessage(null)
 
-      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        credentials: 'include',  // CRITICAL: Send session cookie
+        credentials: 'include',
         body: JSON.stringify({
           displayName: displayName.trim() || null,
           bio: bio.trim() || null
@@ -259,6 +295,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       const data = await response.json()
       if (data.success && data.profile) {
         setProfile(data.profile)
+
+        // Also update global auth store so WalletButton reflects name change immediately
+        useAuthStore.getState().updateUserProfile({
+          displayName: data.profile.displayName,
+          bio: data.profile.bio
+        })
+
         setSuccessMessage('Profile updated successfully!')
         setTimeout(() => setSuccessMessage(null), 3000)
       }
@@ -276,13 +319,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setError(null)
       setSuccessMessage(null)
 
-      // Cookie-based auth (Backend Bible v3.5.2) - no localStorage token needed
       const response = await fetch('https://api.clonex.wtf/api/user/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        credentials: 'include',  // CRITICAL: Send session cookie
+        credentials: 'include',
         body: JSON.stringify({ privacy })
       })
 
@@ -309,11 +351,18 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
       setSaving(true)
       setError(null)
       setSuccessMessage(null)
-      
+
       const response = await avatarService.setNFTAvatar(nft)
-      
+
       if (response.success && response.profile) {
+        // Update local profile state
         setProfile(prev => prev ? { ...prev, avatar: response.profile.avatar } : null)
+
+        // Also update global auth store so WalletButton reflects change immediately
+        useAuthStore.getState().updateUserProfile({
+          avatar: response.profile.avatar
+        })
+
         setSuccessMessage('Avatar updated successfully!')
         setTimeout(() => setSuccessMessage(null), 3000)
       }
@@ -328,6 +377,15 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
   const handleCustomAvatarUpload = async (avatarUrl: string) => {
     try {
       await fetchProfile()
+
+      // Also update global auth store with the new uploaded avatar
+      useAuthStore.getState().updateUserProfile({
+        avatar: {
+          url: avatarUrl,
+          type: 'uploaded'
+        }
+      })
+
       setSuccessMessage('Custom avatar uploaded successfully!')
       setTimeout(() => setSuccessMessage(null), 3000)
     } catch (err: any) {
@@ -363,6 +421,79 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
     return Math.round((completed / total) * 100)
   }
 
+  // Calculate NFT counts from live nftData (same logic as ProductionNFTDashboard)
+  const getNFTStats = () => {
+    if (!nftData) {
+      return {
+        totalNFTs: 0,
+        eligibleNFTs: 0,
+        delegatedNFTs: 0,
+        ownedNFTs: 0,
+        clonex: 0,
+        animus: 0,
+        clonexOwned: 0,
+        clonexDelegated: 0,
+        animusOwned: 0,
+        animusDelegated: 0,
+        hasBreakdown: false
+      }
+    }
+
+    // Get collections from nftData - check both collections and nftCollections
+    let clonexCount = nftData.collections?.clonex || nftData.nftCollections?.clonex?.count || 0
+    let animusCount = nftData.collections?.animus || nftData.nftCollections?.animus?.count || 0
+    let animusEggsCount = nftData.collections?.animus_eggs || nftData.nftCollections?.animus_eggs?.count || 0
+    let clonexVialsCount = nftData.collections?.clonex_vials || nftData.nftCollections?.clonex_vials?.count || 0
+
+    // Get owned/delegated breakdown
+    const breakdown = nftData.breakdown
+    const clonexOwned = breakdown?.direct?.collections?.clonex || 0
+    const clonexDelegated = breakdown?.delegated?.collections?.clonex || 0
+    const animusOwned = breakdown?.direct?.collections?.animus || 0
+    const animusDelegated = breakdown?.delegated?.collections?.animus || 0
+
+    // Calculate total delegated and owned
+    const delegatedCount = (breakdown?.delegated?.total) ||
+      (clonexDelegated + animusDelegated +
+        (breakdown?.delegated?.collections?.animus_eggs || 0) +
+        (breakdown?.delegated?.collections?.clonex_vials || 0))
+    const ownedCount = (breakdown?.direct?.total) ||
+      (clonexOwned + animusOwned +
+        (breakdown?.direct?.collections?.animus_eggs || 0) +
+        (breakdown?.direct?.collections?.clonex_vials || 0))
+
+    // Calculate from NFT array if collections are empty
+    if (clonexCount === 0 && animusCount === 0 && nftData.nfts && nftData.nfts.length > 0) {
+      nftData.nfts.forEach((nft: any) => {
+        const collection = (nft.collection || nft.collectionName || '').toLowerCase()
+        if (collection.includes('clonex') && !collection.includes('vial')) clonexCount++
+        else if (collection.includes('animus') && !collection.includes('egg')) animusCount++
+        else if (collection.includes('egg')) animusEggsCount++
+        else if (collection.includes('vial')) clonexVialsCount++
+      })
+    }
+
+    const totalNFTs = nftData.totalNFTs || (clonexCount + animusCount + animusEggsCount + clonexVialsCount)
+    // Eligible NFTs are CloneX + Animus (main collections that grant access)
+    const eligibleNFTs = clonexCount + animusCount
+
+    return {
+      totalNFTs,
+      eligibleNFTs,
+      delegatedNFTs: delegatedCount,
+      ownedNFTs: ownedCount,
+      clonex: clonexCount,
+      animus: animusCount,
+      clonexOwned,
+      clonexDelegated,
+      animusOwned,
+      animusDelegated,
+      hasBreakdown: !!(breakdown?.direct || breakdown?.delegated)
+    }
+  }
+
+  const nftStats = getNFTStats()
+
   // Loading state
   if (loading) {
     return (
@@ -374,11 +505,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
         >
           <div className="text-center">
             <motion.div
-              className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"
+              className="w-16 h-16 border-4 border-[#1C1C1C] border-t-transparent rounded-full mx-auto mb-4"
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
             />
-            <p className="text-gray-600">Loading profile...</p>
+            <p className="text-black font-medium">Loading profile...</p>
           </div>
         </motion.div>
       </ResponsiveContainer>
@@ -396,12 +527,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
         >
           <ResponsiveCard variant="elevated" className="max-w-md">
             <div className="text-center p-6">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-[#1C1C1C]">
                 <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Profile</h3>
+              <h3 className="text-lg font-bold text-black mb-2">Error Loading Profile</h3>
               <p className="text-red-700 mb-4">{error}</p>
               <AccessibleButton onClick={fetchProfile} variant="primary">
                 Try Again
@@ -417,45 +548,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
 
   const profileCompletion = getProfileCompletion()
 
-  // Tab definitions
-  const tabs = [
-    { 
-      id: 'profile', 
-      label: 'Profile', 
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-      </svg>
-    },
-    { 
-      id: 'dna', 
-      label: 'DNA Theme', 
-      icon: activeDNA && <DNAIndicator type={activeDNA} variant="dot" size="sm" animated={false} />
-    },
-    { 
-      id: 'privacy', 
-      label: 'Privacy', 
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </svg>
-    },
-    { 
-      id: 'avatar', 
-      label: 'Avatar', 
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    },
-    { 
-      id: 'social', 
-      label: 'Social', 
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    }
-  ]
-
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen py-8">
       <SkipToContent />
 
       <ResponsiveContainer size="lg">
@@ -463,37 +557,30 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
+          className="space-y-6"
         >
-          {/* Header with DNA theme */}
-          {activeDNA && (
-            <DNAProfileHeader
-              type={activeDNA}
-              title={profile.displayName || 'Your Profile'}
-              subtitle={`${profile.walletAddress.slice(0, 6)}...${profile.walletAddress.slice(-4)}`}
-              icon={DNA_THEMES[activeDNA]?.icon}
-              action={onNavigateBack && (
-                <AccessibleButton
-                  onClick={onNavigateBack}
-                  variant="outline"
-                  ariaLabel="Go back to previous page"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                </AccessibleButton>
-              )}
-            />
-          )}
-
-          {/* Profile completion progress */}
-          <ResponsiveCard variant="elevated" padding="md" className="mb-6">
-            <ProgressBar
-              value={profileCompletion}
-              label="Profile Completion"
-              showPercentage
-              color={activeDNA ? DNA_THEMES[activeDNA]?.accent : '#3B82F6'}
-            />
-          </ResponsiveCard>
+          {/* ================================================
+              PAGE HEADER - Title + Back Button
+              ================================================ */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-black text-black tracking-tight">Profile Settings</h1>
+              <p className="text-[#4A4A4A] font-medium mt-1">Manage your CloneX identity</p>
+            </div>
+            {onNavigateBack && (
+              <AccessibleButton
+                onClick={onNavigateBack}
+                variant="outline"
+                ariaLabel="Go back to previous page"
+                className="border-2 border-[#1C1C1C]"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back
+              </AccessibleButton>
+            )}
+          </div>
 
           {/* Success/Error Messages */}
           <AnimatePresence>
@@ -502,14 +589,13 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="mb-6"
               >
                 <LiveRegion politeness="polite">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-                    <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="bg-[#6EFFC7] border-2 border-[#1C1C1C] rounded-xl p-4 flex items-center gap-3">
+                    <svg className="w-5 h-5 text-black flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-green-700">{successMessage}</p>
+                    <p className="text-black font-medium">{successMessage}</p>
                   </div>
                 </LiveRegion>
               </motion.div>
@@ -520,378 +606,459 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="mb-6"
               >
                 <LiveRegion politeness="assertive">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+                  <div className="bg-red-100 border-2 border-[#1C1C1C] rounded-xl p-4 flex items-center gap-3">
                     <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-red-700">{error}</p>
+                    <p className="text-red-700 font-medium">{error}</p>
                   </div>
                 </LiveRegion>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Profile Summary Card with DNA theming */}
-          {activeDNA ? (
-            <DNAThemedContainer type={activeDNA} variant="card" className="mb-6">
-              <ResponsiveStack direction="responsive" gap={6} align="start">
-                <div className="relative">
-                  <motion.img
-                    src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
-                    alt="Profile Avatar"
-                    className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-white shadow-lg"
-                    whileHover={{ scale: 1.05 }}
-                    transition={{ type: 'spring', stiffness: 300 }}
-                  />
-                  {profile.access.hasAccess && (
-                    <motion.div
-                      className="absolute -bottom-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-semibold"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.3, type: 'spring', stiffness: 500 }}
-                    >
-                      ✓ Access
-                    </motion.div>
-                  )}
-                </div>
-                
-                <div className="flex-1">
-                  <motion.h2
-                    className="text-2xl font-bold text-gray-900 mb-2"
-                    initial={{ x: -20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: 0.1 }}
+          {/* ================================================
+              IDENTITY CARD - Avatar + Name + Address + Stats
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <ResponsiveStack direction="responsive" gap={6} align="start">
+              {/* Avatar Display (Read-Only Here) */}
+              <div className="relative flex-shrink-0">
+                <motion.img
+                  src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
+                  alt="Profile Avatar"
+                  className="w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-[#1C1C1C]"
+                  whileHover={{ scale: 1.02 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                />
+                {(profile.access.hasAccess || nftStats.eligibleNFTs > 0) && (
+                  <motion.div
+                    className="absolute -bottom-1 -right-1 bg-[#00D26A] text-black text-xs px-2 py-1 rounded-full font-bold border-2 border-[#1C1C1C]"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.3, type: 'spring', stiffness: 500 }}
                   >
-                    {profile.displayName || 'Anonymous'}
-                  </motion.h2>
-                  
-                  <ResponsiveStack direction="row" gap={4} align="center" className="text-sm mb-3">
-                    <span className="text-gray-600">
-                      {profile.access.eligibleNFTs} Eligible NFTs
-                    </span>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-gray-600">
-                      {profile.nfts.totalNFTs} Total NFTs
-                    </span>
-                  </ResponsiveStack>
+                    ✓ Access
+                  </motion.div>
+                )}
+              </div>
 
-                  {availableDNA && availableDNA.length > 0 && (
-                    <DnaBadgeGroup
-                      types={availableDNA}
-                      size="sm"
-                      showLabels={false}
-                      onSelect={setActiveDNA}
-                      selectedType={activeDNA}
-                    />
+              {/* Identity Info */}
+              <div className="flex-1 min-w-0">
+                <motion.h2
+                  className="text-2xl font-black text-black mb-1 truncate"
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  {profile.displayName || 'Anonymous Clone'}
+                </motion.h2>
+
+                <p className="text-[#4A4A4A] font-medium mb-3 font-mono text-sm">
+                  {`${profile.walletAddress.slice(0, 6)}...${profile.walletAddress.slice(-4)}`}
+                </p>
+
+                {/* Stats Row - Uses live nftData from auth hook */}
+                <div className="flex flex-wrap items-center gap-3 mb-3">
+                  <span className="lab-badge">
+                    {nftStats.eligibleNFTs} Eligible NFTs
+                  </span>
+                  <span className="lab-badge-accent">
+                    {nftStats.totalNFTs} Total NFTs
+                  </span>
+                  {nftStats.delegatedNFTs > 0 && (
+                    <span className="lab-badge-primary">
+                      {nftStats.delegatedNFTs} Delegated
+                    </span>
                   )}
                 </div>
-              </ResponsiveStack>
-            </DNAThemedContainer>
-          ) : (
-            // Fallback non-themed card
-            <ResponsiveCard variant="elevated" padding="lg" className="mb-6">
-              <ResponsiveStack direction="responsive" gap={6} align="start">
-                <div className="relative">
-                  <img
-                    src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
-                    alt="Profile Avatar"
-                    className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-100"
-                  />
-                  {profile.access.hasAccess && (
-                    <div className="absolute -bottom-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-semibold">
-                      ✓ Access
+
+                {/* Verified Holdings Breakdown - Per Collection */}
+                {(nftStats.clonex > 0 || nftStats.animus > 0) && (
+                  <div className="mt-4 pt-3 border-t border-gray-200">
+                    <p className="text-xs font-bold text-[#4A4A4A] uppercase tracking-wide mb-2">Verified Holdings</p>
+                    <div className="flex flex-wrap gap-3">
+                      {nftStats.clonex > 0 && (
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg px-3 py-2">
+                          <span className="text-sm font-bold text-purple-900">CLONEX</span>
+                          <span className="bg-[#00D26A] text-black text-xs font-bold px-2 py-0.5 rounded-full">{nftStats.clonex} VERIFIED</span>
+                          {nftStats.hasBreakdown && (
+                            <span className="text-xs text-purple-700">
+                              {nftStats.clonexOwned} Owned · {nftStats.clonexDelegated} Delegated
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {nftStats.animus > 0 && (
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg px-3 py-2">
+                          <span className="text-sm font-bold text-blue-900">ANIMUS</span>
+                          <span className="bg-[#00D26A] text-black text-xs font-bold px-2 py-0.5 rounded-full">{nftStats.animus} VERIFIED</span>
+                          {nftStats.hasBreakdown && (
+                            <span className="text-xs text-blue-700">
+                              {nftStats.animusOwned} Owned · {nftStats.animusDelegated} Delegated
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                
-                <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                    {profile.displayName || 'Anonymous'}
-                  </h2>
-                  <p className="text-sm text-gray-500 mb-2">
-                    {`${profile.walletAddress.slice(0, 6)}...${profile.walletAddress.slice(-4)}`}
-                  </p>
-                  
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-600">
-                      {profile.access.eligibleNFTs} Eligible NFTs
-                    </span>
-                    <span className="text-gray-400">•</span>
-                    <span className="text-gray-600">
-                      {profile.nfts.totalNFTs} Total NFTs
-                    </span>
                   </div>
-                </div>
-              </ResponsiveStack>
-            </ResponsiveCard>
-          )}
+                )}
+              </div>
+            </ResponsiveStack>
 
-          {/* Responsive Tabs */}
-          <ResponsiveCard variant="elevated" padding="none" className="mb-6">
-            <ResponsiveTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onChange={(id) => setActiveTab(id as any)}
+            {/* Profile Completion */}
+            <div className="mt-6 pt-4 border-t-2 border-[#1C1C1C]">
+              <ProgressBar
+                value={profileCompletion}
+                label="Profile Completion"
+                showPercentage
+                color={activeDNA ? DNA_THEMES[activeDNA]?.accent : '#00C2FF'}
+              />
+            </div>
+          </div>
+
+          {/* ================================================
+              DNA THEME - Compact Inline Section
+              ================================================ */}
+          <div className={`lab-surface p-4 ${murakamiEnabled && hasMurakamiDrip ? 'murakami-shimmer' : ''}`}>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* DNA Label & Active Indicator */}
+              <div className="flex items-center gap-2 min-w-[120px]">
+                <span className="text-sm font-bold text-black">DNA Theme</span>
+                {activeDNA && (
+                  <div
+                    className="w-4 h-4 rounded-full border-2 border-[#1C1C1C]"
+                    style={{ backgroundColor: DNA_THEMES[activeDNA]?.accent }}
+                    title={DNA_THEMES[activeDNA]?.name}
+                  />
+                )}
+              </div>
+
+              {/* DNA Type Selector - Inline Buttons */}
+              {availableDNA && availableDNA.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {availableDNA.map((dnaType) => {
+                    const theme = DNA_THEMES[dnaType]
+                    const isActive = activeDNA === dnaType
+                    return (
+                      <button
+                        key={dnaType}
+                        onClick={() => setActiveDNA(dnaType)}
+                        className={`
+                          w-9 h-9 rounded-lg border-2 flex items-center justify-center transition-all
+                          ${isActive
+                            ? 'border-[#1C1C1C] scale-110 shadow-md'
+                            : 'border-gray-200 opacity-60 hover:opacity-100 hover:scale-105'
+                          }
+                        `}
+                        style={{ backgroundColor: isActive ? theme?.accent + '20' : 'transparent' }}
+                        title={theme?.name}
+                        aria-label={`${theme?.name} DNA theme`}
+                      >
+                        <img
+                          src={theme?.icon || `/assets/dna-icons/${dnaType}.svg`}
+                          alt={theme?.name}
+                          className="w-6 h-6"
+                          style={{ filter: isActive ? 'none' : 'grayscale(50%)' }}
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <span className="text-sm text-[#4A4A4A]">No DNA themes available</span>
+              )}
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gray-300 hidden sm:block" />
+
+              {/* Murakami Drip Toggle - Only show if eligible */}
+              {hasMurakamiDrip && (
+                <button
+                  onClick={() => setMurakamiEnabled(!murakamiEnabled)}
+                  className={`
+                    flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border-2
+                    ${murakamiEnabled
+                      ? 'bg-gradient-to-r from-[#FF6BDA] via-[#00FFA3] to-[#5DA3FF] text-white border-[#1C1C1C] shadow-md'
+                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:border-[#FF6BDA]'
+                    }
+                  `}
+                  title={murakamiEnabled ? 'Disable Murakami Drip effect' : 'Enable Murakami Drip effect'}
+                >
+                  <span className="text-base">✨</span>
+                  <span>Drip</span>
+                </button>
+              )}
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-gray-300 hidden sm:block" />
+
+              {/* Dark Mode Toggle */}
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`
+                  flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all border-2
+                  ${darkMode
+                    ? 'bg-[#1C1C1C] text-white border-[#1C1C1C]'
+                    : 'bg-gray-100 text-gray-600 border-gray-300 hover:border-[#1C1C1C]'
+                  }
+                `}
+                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              >
+                {darkMode ? (
+                  <>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                    </svg>
+                    <span>Dark</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                    </svg>
+                    <span>Light</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* ================================================
+              AVATAR SECTION
+              ================================================ */}
+          <div className="lab-surface p-6" id="main-content">
+            <SectionHeader
+              title="Avatar"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              }
             />
 
-            <div className="p-6" id="main-content">
-              {/* Profile Tab */}
-              {activeTab === 'profile' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-6"
-                >
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="displayName">
-                      Display Name
-                    </label>
-                    <input
-                      id="displayName"
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      maxLength={50}
-                      placeholder="Enter your display name"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      aria-describedby="displayName-help"
-                    />
-                    <p id="displayName-help" className="mt-1 text-xs text-gray-500">
-                      {displayName.length}/50 characters
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="bio">
-                      Bio
-                    </label>
-                    <textarea
-                      id="bio"
-                      value={bio}
-                      onChange={(e) => setBio(e.target.value)}
-                      maxLength={500}
-                      rows={4}
-                      placeholder="Tell us about yourself..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                      aria-describedby="bio-help"
-                    />
-                    <p id="bio-help" className="mt-1 text-xs text-gray-500">
-                      {bio.length}/500 characters
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <AccessibleButton
-                      onClick={saveProfile}
-                      variant="primary"
-                      loading={saving}
-                      disabled={saving}
-                    >
-                      Save Changes
-                    </AccessibleButton>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* DNA Theme Tab */}
-              {activeTab === 'dna' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-6"
-                >
-                  {activeDNA && (
-                    <DNAThemedContainer type={activeDNA} variant="banner">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                            Current Theme: {DNA_THEMES[activeDNA]?.name || 'Unknown'}
-                          </h3>
-                          <p className="text-sm text-gray-600">
-                            Accent Color: {DNA_THEMES[activeDNA]?.accent}
-                          </p>
-                        </div>
-                        <img 
-                          src={DNA_THEMES[activeDNA]?.icon}
-                          alt={DNA_THEMES[activeDNA]?.name}
-                          className="w-16 h-16"
-                        />
-                      </div>
-                      {hasMurakamiDrip && (
-                        <motion.div
-                          className="mt-3 p-2 bg-white bg-opacity-50 rounded text-sm font-semibold text-purple-700 flex items-center gap-2"
-                          animate={{ scale: [1, 1.02, 1] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        >
-                          ✨ Murakami Drip Active
-                        </motion.div>
-                      )}
-                    </DNAThemedContainer>
-                  )}
-
-                  <DNASelector userDNA={availableDNA} />
-                </motion.div>
-              )}
-
-              {/* Privacy Tab */}
-              {activeTab === 'privacy' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-6"
-                >
-                  <div className="space-y-4">
-                    {[
-                      {
-                        key: 'profilePublic',
-                        label: 'Public Profile',
-                        description: 'Allow others to view your profile'
-                      },
-                      {
-                        key: 'showNfts',
-                        label: 'Show NFTs',
-                        description: 'Display your NFT collection on your profile'
-                      },
-                      {
-                        key: 'showWallet',
-                        label: 'Show Wallet Address',
-                        description: 'Display your full wallet address'
-                      }
-                    ].map((setting) => (
-                      <div key={setting.key} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <h3 className="font-medium text-gray-900">{setting.label}</h3>
-                          <p className="text-sm text-gray-600">{setting.description}</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={privacy[setting.key as keyof typeof privacy]}
-                            onChange={(e) => setPrivacy({ ...privacy, [setting.key]: e.target.checked })}
-                            className="sr-only peer"
-                            aria-label={setting.label}
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex justify-end">
-                    <AccessibleButton
-                      onClick={savePrivacy}
-                      variant="primary"
-                      loading={saving}
-                      disabled={saving}
-                    >
-                      Save Privacy Settings
-                    </AccessibleButton>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Avatar Tab */}
-              {activeTab === 'avatar' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-6"
-                >
-                  <div className="text-center">
-                    <motion.img
-                      src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
-                      alt="Current Avatar"
-                      className="w-32 h-32 rounded-full object-cover border-4 border-gray-100 mx-auto mb-4"
-                      whileHover={{ scale: 1.1 }}
-                      transition={{ type: 'spring', stiffness: 300 }}
-                    />
-                    <p className="text-sm text-gray-600 mb-4">
-                      Current avatar type: <span className="font-semibold capitalize">{profile.avatar.type}</span>
-                    </p>
-                    {profile.avatar.type === 'nft' && profile.avatar.nftDetails && (
-                      <p className="text-xs text-gray-500">
-                        {profile.avatar.nftDetails.collection} #{profile.avatar.nftDetails.tokenId}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-4">
-                    <AccessibleButton
-                      onClick={() => setShowAvatarPicker(true)}
-                      variant="primary"
-                      className="w-full"
-                      ariaLabel="Choose avatar from your NFT collection"
-                    >
-                      <svg className="w-5 h-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      Choose from your NFTs
-                    </AccessibleButton>
-
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-300"></div>
-                      </div>
-                      <div className="relative flex justify-center text-sm">
-                        <span className="px-2 bg-white text-gray-500">or</span>
-                      </div>
-                    </div>
-
-                    <AccessibleButton
-                      onClick={() => setShowAvatarUploader(true)}
-                      variant="secondary"
-                      className="w-full"
-                      ariaLabel="Upload a custom avatar image"
-                    >
-                      <svg className="w-5 h-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                      Upload Custom Avatar
-                    </AccessibleButton>
-                  </div>
-
-                  <p className="text-xs text-gray-500 text-center">
-                    Custom avatars must be under 5MB and in JPG, PNG, or WebP format
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <img
+                src={profile.avatar.url || DEFAULT_AVATAR_SIMPLE}
+                alt="Current Avatar"
+                className="w-20 h-20 rounded-full object-cover border-2 border-[#1C1C1C]"
+              />
+              <div className="flex-1">
+                <p className="text-sm text-[#4A4A4A] mb-1">
+                  Type: <span className="font-bold text-black capitalize">{profile.avatar.type}</span>
+                </p>
+                {profile.avatar.type === 'nft' && profile.avatar.nftDetails && (
+                  <p className="text-xs text-[#4A4A4A]">
+                    {profile.avatar.nftDetails.collection} #{profile.avatar.nftDetails.tokenId}
                   </p>
-                </motion.div>
-              )}
-
-              {/* Social Tab */}
-              {activeTab === 'social' && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <AccessibleButton
+                  onClick={() => setShowAvatarPicker(true)}
+                  variant="primary"
+                  className="lab-button-primary px-4 py-2 text-sm"
+                  ariaLabel="Choose avatar from your NFT collection"
                 >
-                  <SocialConnections
-                    connections={profile.social}
-                    onConnectionChange={handleSocialConnectionChange}
-                  />
-                </motion.div>
-              )}
+                  Choose NFT
+                </AccessibleButton>
+                <AccessibleButton
+                  onClick={() => setShowAvatarUploader(true)}
+                  variant="secondary"
+                  className="lab-button-outline px-4 py-2 text-sm"
+                  ariaLabel="Upload a custom avatar image"
+                >
+                  Upload Custom
+                </AccessibleButton>
+              </div>
             </div>
-          </ResponsiveCard>
+          </div>
 
-          {/* Account Actions */}
-          <ResponsiveCard variant="elevated" padding="lg">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h3>
+          {/* ================================================
+              DISPLAY NAME & BIO SECTION
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <SectionHeader
+              title="Identity"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              }
+            />
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-black mb-2" htmlFor="displayName">
+                  Display Name
+                </label>
+                <input
+                  id="displayName"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  maxLength={50}
+                  placeholder="Enter your display name"
+                  className="lab-input w-full px-4 py-3"
+                  aria-describedby="displayName-help"
+                />
+                <p id="displayName-help" className="mt-1 text-xs text-[#4A4A4A]">
+                  {displayName.length}/50 characters
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-black mb-2" htmlFor="bio">
+                  Bio
+                </label>
+                <textarea
+                  id="bio"
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Tell us about yourself..."
+                  className="lab-input w-full px-4 py-3 resize-none"
+                  aria-describedby="bio-help"
+                />
+                <p id="bio-help" className="mt-1 text-xs text-[#4A4A4A]">
+                  {bio.length}/500 characters
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <AccessibleButton
+                  onClick={saveProfile}
+                  variant="primary"
+                  loading={saving}
+                  disabled={saving}
+                  className="lab-button-primary px-6 py-2"
+                >
+                  Save Identity
+                </AccessibleButton>
+              </div>
+            </div>
+          </div>
+
+          {/* ================================================
+              SOCIAL CONNECTIONS SECTION
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <SectionHeader
+              title="Social Connections"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              }
+            />
+
+            <SocialConnections
+              connections={profile.social}
+              onConnectionChange={handleSocialConnectionChange}
+            />
+          </div>
+
+          {/* ================================================
+              WALLET DELEGATION SECTION (Warm.xyz)
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <SectionHeader
+              title="Wallet Delegation"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              }
+            />
+
+            <WarmDelegation onDelegationChange={fetchProfile} />
+          </div>
+
+          {/* ================================================
+              PRIVACY SETTINGS SECTION
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <SectionHeader
+              title="Privacy"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              }
+            />
+
             <div className="space-y-3">
+              {[
+                {
+                  key: 'profilePublic',
+                  label: 'Public Profile',
+                  description: 'Allow others to view your profile'
+                },
+                {
+                  key: 'showNfts',
+                  label: 'Show NFTs',
+                  description: 'Display your NFT collection publicly'
+                },
+                {
+                  key: 'showWallet',
+                  label: 'Show Wallet Address',
+                  description: 'Display your full wallet address'
+                }
+              ].map((setting) => (
+                <div key={setting.key} className="flex items-center justify-between p-4 bg-[#F5F5F5] border-2 border-[#1C1C1C] rounded-xl">
+                  <div>
+                    <h4 className="font-bold text-black">{setting.label}</h4>
+                    <p className="text-sm text-[#4A4A4A]">{setting.description}</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={privacy[setting.key as keyof typeof privacy]}
+                      onChange={(e) => setPrivacy({ ...privacy, [setting.key]: e.target.checked })}
+                      className="sr-only peer"
+                      aria-label={setting.label}
+                    />
+                    <div className="w-12 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#00C2FF] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[#1C1C1C] after:border-2 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00C2FF]"></div>
+                  </label>
+                </div>
+              ))}
+
+              <div className="flex justify-end pt-2">
+                <AccessibleButton
+                  onClick={savePrivacy}
+                  variant="primary"
+                  loading={saving}
+                  disabled={saving}
+                  className="lab-button-primary px-6 py-2"
+                >
+                  Save Privacy
+                </AccessibleButton>
+              </div>
+            </div>
+          </div>
+
+          {/* ================================================
+              ACCOUNT ACTIONS SECTION
+              ================================================ */}
+          <div className="lab-surface p-6">
+            <SectionHeader
+              title="Account Actions"
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              }
+            />
+
+            <div className="grid sm:grid-cols-2 gap-3">
               <AccessibleButton
                 onClick={() => window.open(`/profile/${profile.walletAddress}`, '_blank')}
                 variant="outline"
-                className="w-full justify-between"
+                className="lab-button-outline px-4 py-3 justify-between"
                 ariaLabel="View your public profile in a new tab"
               >
                 <span>View Public Profile</span>
@@ -899,11 +1066,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </AccessibleButton>
-              
+
               <AccessibleButton
                 onClick={() => setShowResetModal(true)}
                 variant="outline"
-                className="w-full justify-between text-yellow-700 border-yellow-300 hover:bg-yellow-50"
+                className="lab-button-outline px-4 py-3 justify-between text-[#FFB800] border-[#FFB800] hover:bg-[#FFB800] hover:text-black"
                 ariaLabel="Reset your profile to default settings"
               >
                 <span>Reset Profile</span>
@@ -912,7 +1079,8 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
                 </svg>
               </AccessibleButton>
             </div>
-          </ResponsiveCard>
+          </div>
+
         </motion.div>
       </ResponsiveContainer>
 
@@ -935,7 +1103,6 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ onNavigateBack }) => {
         isOpen={showResetModal}
         onClose={() => setShowResetModal(false)}
         onConfirm={async () => {
-          // Handle profile reset
           setShowResetModal(false)
           setSuccessMessage('Profile reset successfully!')
         }}

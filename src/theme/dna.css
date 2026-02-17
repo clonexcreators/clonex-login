@@ -6,9 +6,10 @@
    ======================================== */
 
 :root {
+  --accent: #FF5AF7;
+  --accent-contrast: #FFFFFF;
   --dna-background: linear-gradient(135deg, #FAFAF0 0%, #FAFAF0 100%);
   --dna-shadow: none;
-  --accent-contrast: #FFFFFF;
 }
 
 /* ========================================
@@ -70,6 +71,115 @@
   --accent-contrast: #000000;
   --dna-background: linear-gradient(135deg, #FFE6FA 0%, #FFD0F5 100%);
   --dna-shadow: 0 0 60px rgba(255,107,218,0.3);
+}
+
+/* ========================================
+   Dark Mode Variants
+   Brighter accent colors against dark backgrounds
+   ======================================== */
+
+:root[data-theme="dark"] {
+  --dna-background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+:root[data-theme="dark"][data-dna-theme="human"] {
+  --accent: #7DB8FF;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #0a1628 0%, #152238 100%);
+  --dna-shadow: 0 0 80px rgba(125,184,255,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="robot"] {
+  --accent: #D4A3FF;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #1a0a28 0%, #2a1540 100%);
+  --dna-shadow: 0 0 80px rgba(212,163,255,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="demon"] {
+  --accent: #FF7070;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #280a0a 0%, #401515 100%);
+  --dna-shadow: 0 0 80px rgba(255,112,112,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="angel"] {
+  --accent: #FFD0E8;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #28101e 0%, #402030 100%);
+  --dna-shadow: 0 0 80px rgba(255,208,232,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="reptile"] {
+  --accent: #B8F06D;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #0a1a0a 0%, #152a15 100%);
+  --dna-shadow: 0 0 80px rgba(184,240,109,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="undead"] {
+  --accent: #6A9ACF;
+  --accent-contrast: #FFFFFF;
+  --dna-background: linear-gradient(135deg, #0a1520 0%, #152535 100%);
+  --dna-shadow: 0 0 80px rgba(106,154,207,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="alien"] {
+  --accent: #40FFB8;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #0a1a15 0%, #102a20 100%);
+  --dna-shadow: 0 0 80px rgba(64,255,184,0.4);
+}
+
+:root[data-theme="dark"][data-dna-theme="murakami"] {
+  --accent: #FF8DE8;
+  --accent-contrast: #000000;
+  --dna-background: linear-gradient(135deg, #200a1a 0%, #351530 100%);
+  --dna-shadow: 0 0 80px rgba(255,141,232,0.4);
+}
+
+/* Dark mode text adjustments */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] .lab-surface {
+  background: rgba(30, 30, 40, 0.95);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+:root[data-theme="dark"] .text-black {
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .text-\[\#4A4A4A\] {
+  color: #a0a0a0;
+}
+
+:root[data-theme="dark"] .bg-gray-100 {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme="dark"] .border-gray-200 {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+:root[data-theme="dark"] .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+:root[data-theme="dark"] .bg-\[\#F5F5F5\] {
+  background-color: rgba(40, 40, 50, 0.8);
+}
+
+:root[data-theme="dark"] .lab-input {
+  background-color: rgba(30, 30, 40, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .lab-input::placeholder {
+  color: #808080;
 }
 
 /* ========================================
@@ -301,16 +411,42 @@ body {
   border-color: var(--accent);
 }
 
-/* Smooth theme transitions */
-* {
-  transition-property: color, background-color, border-color;
-  transition-duration: 0.3s;
-  transition-timing-function: ease;
+/* Smooth theme transitions — targeted, not universal (avoids perf issues) */
+body,
+.dna-nav,
+.dna-card,
+.dna-primary-button,
+.dna-badge,
+.dna-accent-text,
+.accent-color,
+.accent-bg,
+.accent-border,
+.dna-glow {
+  transition: background 0.5s ease, background-color 0.5s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* Override transitions for interactive elements */
+/* Interactive elements keep their own fast transitions */
 button, a, input, select, textarea {
   transition: all 0.2s ease;
+}
+
+/* ========================================
+   Navigation Theme Integration
+   ======================================== */
+
+/* DNA-themed navigation bar */
+.dna-nav {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 2px solid var(--accent);
+  transition: border-color 0.5s ease;
+}
+
+/* Active navigation tab with theme accent */
+.dna-nav-tab-active {
+  background-color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 /* ========================================

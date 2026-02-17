@@ -240,16 +240,73 @@ class AvatarService {
 
   /**
    * Set NFT avatar (convenience method)
+   * Backend expects collectionId (1=CloneX, 2=Animus) and tokenId
    */
   async setNFTAvatar(nft: NFTAvatar): Promise<SetAvatarResponse> {
-    return this.setAvatar({
-      type: 'nft',
-      nftDetails: {
-        contract: nft.contract,
-        tokenId: nft.tokenId,
-        collection: nft.collection
+    // Map contract/collection to collectionId for backend
+    const collectionId = this.getCollectionId(nft.contract, nft.collection);
+
+    if (!collectionId) {
+      throw new Error(`Unsupported collection: ${nft.collection}`);
+    }
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/user/profile/avatar`,
+        {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({
+            collectionId,
+            tokenId: nft.tokenId
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Failed to set avatar: ${response.statusText}`
+        );
       }
-    });
+
+      const data: SetAvatarResponse = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to set avatar');
+      }
+
+      console.log('✅ NFT Avatar set successfully');
+      return data;
+
+    } catch (error) {
+      console.error('❌ Failed to set NFT avatar:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Map contract address or collection name to backend collectionId
+   * Backend uses: 1 = CloneX, 2 = Animus
+   */
+  private getCollectionId(contract: string, collection: string): number | null {
+    const contractLower = contract.toLowerCase();
+    const collectionLower = collection.toLowerCase();
+
+    // CloneX contract
+    if (contractLower === '0x49cf6f5d44e70224e2e23fdcdd2c053f30ada28b' ||
+        collectionLower === 'clonex' || collectionLower === 'clone x') {
+      return 1;
+    }
+
+    // Animus contract
+    if (contractLower === '0xec99492dd9ef8ca48f691acd67d2c96a0a43935f' ||
+        collectionLower === 'animus') {
+      return 2;
+    }
+
+    return null;
   }
 
   /**

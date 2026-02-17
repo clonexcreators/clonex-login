@@ -80,12 +80,12 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
   // NOTE: This function does NOT depend on isConnected to avoid stale closures
   const checkSessionStatus = useCallback(async (): Promise<boolean> => {
     // Re-entry guard: prevent concurrent session checks
-    if (sessionCheckInProgress.current) {
+    if (globalSessionCheckInProgress) {
       console.log('🔒 [checkSessionStatus] Already in progress, skipping');
       return false;
     }
 
-    sessionCheckInProgress.current = true;
+    globalSessionCheckInProgress = true;
 
     try {
       console.log('🍪 [checkSessionStatus] Starting cookie validation...');
@@ -119,7 +119,7 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
       transitionTo('idle');
       return false;
     } finally {
-      sessionCheckInProgress.current = false;
+      globalSessionCheckInProgress = false;
     }
   }, [setUser, setAuthenticated, setConnected, transitionTo]);
 
@@ -217,14 +217,41 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
 
       console.log('🍪 [login] Authentication successful! Cookie set by backend.');
 
-      // Update auth state
+      // Update auth state with basic user data
       setUser(authResponse.user);
       setAuthenticated(true);
       setConnected(true, address);
 
-      // Step 4: Load NFT data
+      // Step 4: Load NFT data and profile data in parallel
       transitionTo('loading_nfts');
-      console.log('🔬 [login] Loading NFT data...');
+      console.log('🔬 [login] Loading NFT data and profile...');
+
+      // Fetch profile data (displayName, avatar) in parallel with NFT verification
+      authService.fetchProfile().then(profileResponse => {
+        if (profileResponse.success && profileResponse.profile) {
+          console.log('✅ [login] Profile loaded:', {
+            displayName: profileResponse.profile.displayName,
+            hasAvatar: !!profileResponse.profile.avatar?.url
+          });
+
+          // Update user with profile data using store's updateUserProfile
+          useAuthStore.getState().updateUserProfile({
+            displayName: profileResponse.profile.displayName || undefined,
+            bio: profileResponse.profile.bio || undefined,
+            avatar: profileResponse.profile.avatar?.url ? {
+              url: profileResponse.profile.avatar.url,
+              type: (profileResponse.profile.avatar.type as 'nft' | 'uploaded' | 'default') || 'default',
+              nftDetails: profileResponse.profile.avatar.tokenId ? {
+                contract: '',
+                tokenId: profileResponse.profile.avatar.tokenId,
+                collection: profileResponse.profile.avatar.collectionId || ''
+              } : undefined
+            } : undefined
+          });
+        }
+      }).catch(err => {
+        console.warn('⚠️ [login] Failed to load profile (non-critical):', err);
+      });
 
       try {
         const nftResponse = await authService.verifyNFTs(address);
@@ -405,9 +432,36 @@ export const useCloneXAuth = (): AuthState & AuthActions => {
           store.transitionTo('ready');
           console.log('✅ [Bootstrap] Transitioned to ready');
 
-          // Load NFT data in background after session restore
-          // This populates the NFT gallery with images
+          // Load NFT data and profile data in background after session restore
           const walletAddress = sessionResponse.user.walletAddress;
+
+          // Fetch profile data (displayName, avatar) for UI
+          authService.fetchProfile().then(profileResponse => {
+            if (profileResponse.success && profileResponse.profile) {
+              console.log('✅ [Bootstrap] Profile loaded:', {
+                displayName: profileResponse.profile.displayName,
+                hasAvatar: !!profileResponse.profile.avatar?.url
+              });
+
+              store.updateUserProfile({
+                displayName: profileResponse.profile.displayName || undefined,
+                bio: profileResponse.profile.bio || undefined,
+                avatar: profileResponse.profile.avatar?.url ? {
+                  url: profileResponse.profile.avatar.url,
+                  type: (profileResponse.profile.avatar.type as 'nft' | 'uploaded' | 'default') || 'default',
+                  nftDetails: profileResponse.profile.avatar.tokenId ? {
+                    contract: '',
+                    tokenId: profileResponse.profile.avatar.tokenId,
+                    collection: profileResponse.profile.avatar.collectionId || ''
+                  } : undefined
+                } : undefined
+              });
+            }
+          }).catch(err => {
+            console.warn('⚠️ [Bootstrap] Failed to load profile:', err);
+          });
+
+          // Fetch NFT data for the gallery
           authService.verifyNFTs(walletAddress).then(nftResponse => {
             if (nftResponse.success) {
               store.setNFTData(nftResponse);

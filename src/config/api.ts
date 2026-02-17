@@ -19,67 +19,22 @@ export const getApiUrl = () => {
   if (import.meta.env.MODE === 'development') {
     return 'http://localhost:3000';  // Local development
   }
-  return 'https://api.clonex.wtf';  // Production
+  return 'https://api.clonex.wtf';  // Production - cross-subdomain with cookie
 };
 
 export const API_URL = getApiUrl();
 
 // ============================================================================
-// Access Level Types (Production-aligned with backend)
+// Access Level Type
 // ============================================================================
 
-export type AccessLevel = 
+export type AccessLevel =
   | 'COSMIC_CHAMPION'    // 25+ CloneX, 10+ Animus
-  | 'CLONE_VANGUARD'     // 15+ CloneX, 5+ Animus  
+  | 'CLONE_VANGUARD'     // 15+ CloneX, 5+ Animus
   | 'DNA_DISCIPLE'       // 5+ CloneX, 1+ Animus
   | 'ANIMUS_PRIME'       // 5+ Animus
   | 'ANIMUS_HATCHLING'   // 1+ CloneX OR 1+ Animus
   | 'LOST_CODE';         // No qualifying NFTs
-
-export const ACCESS_LEVEL_CONFIG = {
-  'COSMIC_CHAMPION': {
-    title: 'Cosmic Champion',
-    description: 'Ultimate ecosystem status',
-    requirements: '25+ CloneX, 10+ Animus',
-    color: '#FF2D75', // Hot pink
-    subdomains: ['*'] // All subdomains
-  },
-  'CLONE_VANGUARD': {
-    title: 'Clone Vanguard', 
-    description: 'High-ranking CloneX holder',
-    requirements: '15+ CloneX, 5+ Animus',
-    color: '#34EEDC', // Mint teal
-    subdomains: ['gm', 'gro', 'profile', 'lore', 'lab']
-  },
-  'DNA_DISCIPLE': {
-    title: 'DNA Disciple',
-    description: 'CloneX collector',
-    requirements: '5+ CloneX, 1+ Animus',
-    color: '#87CEFA', // Sky blue
-    subdomains: ['gm', 'gro', 'profile', 'lore']
-  },
-  'ANIMUS_PRIME': {
-    title: 'Animus Prime',
-    description: 'Animus specialist',
-    requirements: '5+ Animus',
-    color: '#FF85B3', // Bubblegum pink
-    subdomains: ['gm', 'gro', 'profile', 'lore']
-  },
-  'ANIMUS_HATCHLING': {
-    title: 'Animus Hatchling',
-    description: 'Entry level',
-    requirements: '1+ CloneX OR 1+ Animus',
-    color: '#27C3B6', // Cool teal
-    subdomains: ['gm', 'gro', 'profile']
-  },
-  'LOST_CODE': {
-    title: 'Lost Code',
-    description: 'No NFTs detected',
-    requirements: 'No qualifying NFTs',
-    color: '#F9F9F9', // Neutral white
-    subdomains: ['gm']
-  }
-} as const;
 
 // ============================================================================
 // Core Interfaces
@@ -109,6 +64,17 @@ export interface AuthUser {
     canClaim: boolean;
     lastClaimed: string;
   };
+  // Profile data for unified identity
+  avatar?: {
+    url: string | null;
+    type: 'nft' | 'uploaded' | 'default';
+    nftDetails?: {
+      contract: string;
+      tokenId: string;
+      collection: string;
+    };
+  };
+  bio?: string;
 }
 
 // Authentication responses
@@ -156,10 +122,21 @@ export interface SessionStatusResponse {
 // ============================================================================
 
 export interface NFTToken {
-  contractAddress: string;
+  contractAddress?: string;
+  contract?: string;  // API may return 'contract' instead of 'contractAddress'
   tokenId: string;
-  metadata?: object;
-  imageUrl?: string;
+  metadata?: {
+    name?: string;
+    image?: string;
+    [key: string]: any;
+  };
+  // API returns 'image' directly on some responses
+  image?: string;
+  imageUrl?: string;  // Legacy field
+  name?: string;
+  displayName?: string;
+  collection?: string;
+  ownershipType?: 'direct' | 'delegated';
   isDelegated?: boolean;
   vaultWallet?: string;
 }
@@ -173,19 +150,46 @@ export interface NFTVerificationResponse {
   success: boolean;
   walletAddress: string;
   accessLevel: AccessLevel;
-  nftCollections: {
-    clonex: NFTCollection;
-    animus: NFTCollection;
-    animus_eggs: NFTCollection;
-    clonex_vials: NFTCollection;
+  // Top-level NFT array (actual API response format)
+  nfts?: NFTToken[];
+  totalNFTs?: number;
+  // Collection counts (actual API response format)
+  collections?: {
+    clonex: number;
+    animus: number;
+    animus_eggs: number;
+    clonex_vials: number;
   };
-  delegatedAccess: {
+  // Detailed collection data with tokens
+  nftCollections?: {
+    clonex?: NFTCollection;
+    animus?: NFTCollection;
+    animus_eggs?: NFTCollection;
+    clonex_vials?: NFTCollection;
+  };
+  // Delegation info
+  delegatedAccess?: {
     enabled: boolean;
-    vaultWallets: string[];
-    delegatedNFTs: NFTToken[];
+    vaultWallets?: string[];
+    delegatedNFTs?: NFTToken[];
   };
-  verificationMethod: 'ALCHEMY' | 'MORALIS' | 'ETHERSCAN';
-  lastUpdated: string;
+  delegationInfo?: {
+    hasDelegatedNFTs: boolean;
+    vaultAddresses: string[];
+    totalVaults: number;
+    actuallyDelegatedNFTs: number;
+  };
+  breakdown?: {
+    direct: { total: number; collections: any; nfts: NFTToken[] };
+    delegated: { total: number; collections: any; nfts: NFTToken[] };
+  };
+  verificationMethod?: 'ALCHEMY' | 'MORALIS' | 'ETHERSCAN' | 'alchemy' | 'moralis' | 'etherscan';
+  lastVerified?: string;
+  lastUpdated?: string;
+  cached?: boolean;
+  hasAccess?: boolean;
+  eligibleNFTs?: number;
+  accessReason?: string;
 }
 
 // ============================================================================
@@ -199,86 +203,4 @@ export interface APIError {
   code?: number;
 }
 
-// ============================================================================
-// Utility Types
-// ============================================================================
-
 export type APIResponse<T> = T | APIError;
-
-// Request options for API calls
-export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  headers?: Record<string, string>;
-  body?: any;
-  timeout?: number;
-}
-
-// Authentication state
-export interface AuthState {
-  user: AuthUser | null;
-  token: string | null;
-  isLoading: boolean;
-  error: string | null;
-}
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-export const CONTRACT_ADDRESSES = {
-  CLONEX: '0x49cf6f5d44e70224e2e23fdcdd2c053f30ada28b',
-  ANIMUS: '0xec99492dd9ef8ca48f691acd67d2c96a0a43935f',
-  ANIMUS_EGGS: '0x6c410cf0b8c113dc6a7641b431390b11d5515082',
-  CLONEX_VIALS: '0x348fc118bcc65a92dc033a951af153d14d945312'
-} as const;
-
-export const API_ENDPOINTS = {
-  AUTH: {
-    NONCE: '/api/auth/nonce',
-    VERIFY: '/api/auth/verify',
-    REFRESH: '/api/auth/refresh',
-    STATUS: '/api/auth/status',
-    LOGOUT: '/api/auth/logout'
-  },
-  NFT: {
-    VERIFY: '/api/nft/verify',
-    COLLECTIONS: '/api/nft/collections',
-    DELEGATED: '/api/nft/delegated'
-  },
-  USER: {
-    PROFILE: '/api/user/profile',
-    SETTINGS: '/api/user/settings'
-  }
-} as const;
-
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-export const isAPIError = (response: any): response is APIError => {
-  return response && response.success === false && typeof response.error === 'string';
-};
-
-export const isValidAccessLevel = (level: string): level is AccessLevel => {
-  return Object.keys(ACCESS_LEVEL_CONFIG).includes(level);
-};
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-export const getAccessLevelConfig = (level: AccessLevel) => {
-  return ACCESS_LEVEL_CONFIG[level];
-};
-
-export const hasSubdomainAccess = (level: AccessLevel, subdomain: string): boolean => {
-  const config = ACCESS_LEVEL_CONFIG[level];
-  return config.subdomains.includes('*') || config.subdomains.includes(subdomain);
-};
-
-export const calculateTotalNFTs = (collections: NFTVerificationResponse['nftCollections']): number => {
-  return collections.clonex.count + 
-         collections.animus.count + 
-         collections.animus_eggs.count + 
-         collections.clonex_vials.count;
-};
